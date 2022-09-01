@@ -4,23 +4,13 @@
 // found in the LICENSE file.
 
 #include <stdio.h>
-#include <string.h>
+#include <math.h>
 #include <SDL/SDL.h>
 #include <SDL/SDL_image.h>
 #include "png.h"
 
 
-typedef struct {
-    const png_byte* bytes;
-    const png_size_t size;
-} DataBytes;
-
-typedef struct PNG {
-    const DataBytes data;
-    png_size_t offset;
-} PNGDataBytes;
-
-struct {
+struct pointer {
 	char point[4];
 } user_ptr;
 
@@ -50,8 +40,6 @@ int file_size;
 png_structp png_ptr;
 png_infop info_ptr;
 
-int filesize;
-png_bytep filebytes;
 
 
 
@@ -383,31 +371,10 @@ SDL_Surface *createRGBSurfaceFromPNG(void *png_buff, int width, int height, int 
 
 
 
-void custom_read_fn(png_structp png_ptr, png_bytep data, size_t read_length) {
-
-      png_bytep filebytes;
-
-      filebytes = (png_bytep)png_get_io_ptr(png_ptr);
-
-      memcpy(data, filebytes, read_length);
-
-       for(int i=0; i<10; i++) {
-
-        printf("signature: %X\n", data[i]);
-
-      }
-
-
-}
-
-
-
-
-
 int main() {
   
 
-  // png_bytepp row_pointers;
+  png_bytepp row_pointers;
   SDL_Surface *screen;
   SDL_Surface *surface;
   Uint32 rMask, gMask, bMask, aMask;
@@ -415,92 +382,103 @@ int main() {
   int width;   
   int depth;
   int row_bytes;   
+  FILE *pfile; 
+  // png_bytep sig;
+  png_bytep png;
+  unsigned int filesize;
 
 
-  FILE *pfile = fopen("test/cube_explosion.png", "rb");
+  initialize_png_reader();
+
+  pfile = fopen("test/cube_explosion.png", "rb");
   // FILE *pfile = fopen("test/hello_world_file.txt", "rb");
   if (!pfile) {
     printf("cannot open file\n");
     return 1;
   }
-  
-  unsigned char sig[8];
 
-  // fread(sig, 1, 8, pfile);
-  // if (!png_check_sig(sig, 8)) {
-  //   printf("bad signature\n");
-  //   return 2;   /* bad signature */
-  // } else {
-  //   printf("this is a PNG file\n");
+  char sig[8];
+
+  fread(sig, 1, 8, pfile);
+
+  for(int i=0; i<8; i++) {
+
+      printf("signature is %c ",  sig[i]);
+
+  }
+
+  if (!png_check_sig((png_const_bytep)png, 8)) {
+    printf("bad signature\n");
+    return 2;   /* bad signature */
+  } else {
+    printf("this is a PNG file\n");
+  }
+
+  fseek(pfile, 0L, SEEK_SET);
+
+  fseek(pfile, 0L, SEEK_END);
+
+  filesize = ftell(pfile);
+
+  png = (png_bytep)png_malloc(read_ptr, filesize);
+
+  fseek(pfile, 0L, SEEK_SET);
+
+  fread(png, 1, filesize, pfile);
+
+
+
+
+
+  // png_structp png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, (png_voidp)NULL, NULL, NULL);
+
+  // if (!png_ptr) {
+  //     return 3;
+  // }
+
+  // png_infop info_ptr = png_create_info_struct(png_ptr);
+
+  // if (!info_ptr) {
+  //     png_destroy_read_struct(&png_ptr,
+  //         (png_infopp)NULL, (png_infopp)NULL);
+  //     return 4;
   // }
 
 
-  // initialize_png_reader();
-  png_structp png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, (png_voidp)NULL, NULL, NULL);
+  // if (setjmp(png_jmpbuf(png_ptr)))
+  // {
+  //     png_destroy_read_struct(&png_ptr, &info_ptr,
+  //         (png_infopp)NULL);
+  //     fclose(pfile);
+  //     return 5;
+  // }
 
-  if (!png_ptr) {
-      return 3;
-  }
-
-  png_infop info_ptr = png_create_info_struct(png_ptr);
-
-  if (!info_ptr) {
-      png_destroy_read_struct(&png_ptr,
-          (png_infopp)NULL, (png_infopp)NULL);
-      return 4;
-  }
-
-
-  if (setjmp(png_jmpbuf(png_ptr)))
-  {
-      png_destroy_read_struct(&png_ptr, &info_ptr,
-          (png_infopp)NULL);
-      fclose(pfile);
-      return 5;
-  }
-
-
-
-  // fseek(pfile, 1, SEEK_END);
-
-  filesize = 164109;//ftell(pfile);
-
-  // fseek(pfile, 1, SEEK_SET);
-
-  printf("filesize = %u \n", filesize);
-
-  filebytes = (png_bytep)png_malloc(png_ptr, filesize);
-
-  fread(filebytes, 1, filesize, pfile);
-
-  for(int i=0; i<10; i++) {
-
-    printf("signature: %X\n", filebytes[i]);
-
-  }
-
-  PNGDataBytes bytes;
-
-  png_set_read_fn(png_ptr, filebytes, custom_read_fn);
-
-
+  
   // png_init_io(png_ptr, pfile);
 
   // png_set_sig_bytes(png_ptr, 8);
 
-  png_set_read_status_fn(png_ptr, read_row_callback);
+  // png_set_read_status_fn(png_ptr, read_row_callback);
 
-  png_read_png(png_ptr, info_ptr, PNG_TRANSFORM_IDENTITY, NULL);
+  // int chunks = floor(filesize/4000);
 
-  row_pointers = png_get_rows(png_ptr, info_ptr);
+  // for(int i=0; i<chunks; i++) {
+
+    process_data(png, filesize);
+
+  // }
+
+  // png_read_png(png_ptr, info_ptr, PNG_TRANSFORM_IDENTITY, NULL);
+
+
+
+
 
 
   height = (unsigned int)png_get_image_height(png_ptr, info_ptr);
   width = (unsigned int)png_get_image_width(png_ptr, info_ptr);   
   depth = (unsigned int)png_get_bit_depth(png_ptr, info_ptr);
   row_bytes = (unsigned int)png_get_rowbytes(png_ptr, info_ptr);
-
-  
 
   printf("Image height is %u \n", (unsigned int)png_get_image_height(png_ptr, info_ptr)); 
   printf("Image width is %u \n", (unsigned int)png_get_image_width(png_ptr, info_ptr)); 
@@ -510,19 +488,19 @@ int main() {
 
   fclose (pfile);
 
-  // row_pointers = png_get_rows(png_ptr, info_ptr);
+  row_pointers = png_get_rows(png_ptr, info_ptr);
 
-  // for( int i=0; i<height; i++) {
+  for( int i=0; i<height; i++) {
 
-  //   printf("row_pointers %p \n", (void*)row_pointers[i]);
+    printf("row_pointers %p \n", (void*)row_pointers[i]);
 
-  // }
+  }
 
-  // for( int i=0; i<row_bytes; i++) {
+  for( int i=0; i<row_bytes; i++) {
 
-  //   printf("row_pointers %u \n", row_pointers[240][i]);
+    printf("row_pointers %u \n", row_pointers[240][i]);
 
-  // }
+  }
 
 
 

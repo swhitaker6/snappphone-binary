@@ -46,6 +46,7 @@ int num_pass = 1, pass;
 int bit_depth, color_type;
 int total_bytes = 0;
 int file_size;
+int offset;
 
 png_structp png_ptr;
 png_infop info_ptr;
@@ -387,15 +388,21 @@ void custom_read_fn(png_structp png_ptr, png_bytep data, size_t read_length) {
 
       png_bytep filebytes;
 
+      png_byte* png_data;
+
       filebytes = (png_bytep)png_get_io_ptr(png_ptr);
 
-      memcpy(data, filebytes, read_length);
+      png_data = filebytes + offset;
 
-       for(int i=0; i<10; i++) {
+      memcpy(data, png_data, read_length);
 
-        printf("signature: %X\n", data[i]);
+      //  for(int i=0; i<10; i++) {
 
-      }
+      //   printf("signature: %X\n", data[i]);
+
+      // }
+
+
 
 
 }
@@ -461,11 +468,11 @@ int main() {
 
 
 
-  // fseek(pfile, 1, SEEK_END);
+  fseek(pfile, 1, SEEK_END);
 
-  filesize = 164109;//ftell(pfile);
+  filesize = ftell(pfile);
 
-  // fseek(pfile, 1, SEEK_SET);
+  fseek(pfile, 1, SEEK_SET);
 
   printf("filesize = %u \n", filesize);
 
@@ -479,7 +486,9 @@ int main() {
 
   }
 
-  PNGDataBytes bytes;
+  PNGDataBytes png;
+
+  // png.data.bytes = filebytes; 
 
   png_set_read_fn(png_ptr, filebytes, custom_read_fn);
 
