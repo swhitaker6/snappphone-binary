@@ -10,15 +10,15 @@
 #include "png.h"
 
 
-typedef struct {
-    const png_byte* bytes;
-    const png_size_t size;
-} DataBytes;
+// typedef struct {
+//     const png_byte* bytes;
+//     const png_size_t size;
+// } DataBytes;
 
-typedef struct PNG {
-    const DataBytes data;
-    png_size_t offset;
-} PNGDataBytes;
+// typedef struct PNG {
+//     const DataBytes data;
+//     png_size_t offset;
+// } PNGDataBytes;
 
 struct {
 	char point[4];
@@ -46,7 +46,7 @@ int num_pass = 1, pass;
 int bit_depth, color_type;
 int total_bytes = 0;
 int file_size;
-int offset;
+int offset = 0;
 
 png_structp png_ptr;
 png_infop info_ptr;
@@ -394,14 +394,13 @@ void custom_read_fn(png_structp png_ptr, png_bytep data, size_t read_length) {
 
       png_data = filebytes + offset;
 
+      // printf("read_length: %X\n", (unsigned int)read_length);
+
+      offset += read_length;
+
+      // printf("offset: %X\n", (unsigned int)offset);
+
       memcpy(data, png_data, read_length);
-
-      //  for(int i=0; i<10; i++) {
-
-      //   printf("signature: %X\n", data[i]);
-
-      // }
-
 
 
 
@@ -468,11 +467,11 @@ int main() {
 
 
 
-  fseek(pfile, 1, SEEK_END);
+  fseek(pfile, 0, SEEK_END);
 
   filesize = ftell(pfile);
 
-  fseek(pfile, 1, SEEK_SET);
+  fseek(pfile, 0, SEEK_SET);
 
   printf("filesize = %u \n", filesize);
 
@@ -486,7 +485,7 @@ int main() {
 
   }
 
-  PNGDataBytes png;
+  // PNGDataBytes png;
 
   // png.data.bytes = filebytes; 
 
