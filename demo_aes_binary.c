@@ -5,9 +5,12 @@
 
 #include <stdio.h>
 #include <string.h>
+#include "png.h"
+#include <openssl/evp.h>
+#include <openssl/bio.h>
+#include <openssl/err.h>
 #include <SDL/SDL.h>
 #include <SDL/SDL_image.h>
-#include "png.h"
 
 
 // typedef struct {
@@ -24,6 +27,8 @@ struct {
 	char point[4];
 } user_ptr;
 
+unsigned char key[] = "0123456789abcdeF";
+unsigned char iv[] = "1234567887654321";
 
 int num_row_bytes;
 int BYTES_PER_PIXEL;
@@ -457,7 +462,11 @@ void output_flush_fn(png_structp png_ptr) {
 
 int main() {
   
-
+  EVP_CIPHER_CTX *ctx = NULL;
+  EVP_CIPHER *aes128ctr = NULL;
+  unsigned int len = 0;
+  unsigned char *outfilebytes = NULL;
+  int ret = 1;
   // png_bytepp row_pointers;
   SDL_Surface *image;
   SDL_Surface *screen;
@@ -466,7 +475,8 @@ int main() {
   int height;
   int width;   
   int depth;
-  int row_bytes;   
+  int row_bytes;
+  int do_encrypt = 1;   
 
 
   FILE *pfile = fopen("test/cube_explosion.png", "rb");
@@ -582,10 +592,82 @@ int main() {
   printf("Image stride is %u \n", (unsigned int)png_get_rowbytes(read_ptr, read_info_ptr));
 
 
-  png_set_rows(write_ptr, write_info_ptr, row_pointers);    
-  // png_set_rows(write_ptr, write_info_ptr, &row_pointers);    
+  unsigned char outbuf[row_bytes + EVP_MAX_BLOCK_LENGTH];
+  int outlen;
 
-  offset = 0;
+  ctx = EVP_CIPHER_CTX_new();
+  if (ctx == NULL)
+      goto err;
+
+
+
+  // aes128ctr = EVP_CIPHER_fetch(NULL, "AES-128-CTR", NULL);
+  // if (aes128ctr == NULL)
+  //     goto err;
+
+
+  if (!EVP_CipherInit_ex2(ctx, EVP_aes_128_ctr(), NULL, NULL, do_encrypt, NULL))
+      goto err;
+
+  OPENSSL_assert(EVP_CIPHER_CTX_get_key_length(ctx) == 16);
+  OPENSSL_assert(EVP_CIPHER_CTX_get_iv_length(ctx) == 16);
+
+
+  if (!EVP_CipherInit_ex2(ctx, NULL, key, iv, do_encrypt, NULL))
+      goto err;
+
+
+  for (size_t i = 0; i < height; i++)
+  {
+
+
+    for(int j=0; j<8; j++) {
+
+      printf("BEFORE aes encryption %u: %X\n", (unsigned int)i, row_pointers[i][j]);
+
+    }
+
+
+
+    if (!EVP_CipherUpdate(ctx, outbuf, &outlen, row_pointers[i], row_bytes))
+        goto err;
+
+     for (size_t j = 0; j < row_bytes; j++)
+     {
+          row_pointers[i][j] = outbuf[j];
+     }
+
+    printf("out length is %u \n", outlen);       
+                        
+
+
+    for(int j=0; j<8; j++) {
+
+      printf("AFTER aes encryption %u: %X\n", (unsigned int)i, row_pointers[i][j]);
+
+    }
+
+
+  }
+
+  if (!EVP_CipherFinal_ex(ctx, outbuf, &outlen)) {
+    /* Error */
+    goto err;
+  }
+
+  ret = 0;
+
+ err:
+  /* Clean up all the resources we allocated */
+  EVP_CIPHER_CTX_free(ctx);
+  if (ret != 0) {
+    ERR_print_errors_fp(stderr);
+    return ret;
+  }
+
+
+
+  png_set_rows(write_ptr, write_info_ptr, row_pointers);    
 
   memset(filebytes, 0, bufferSize); 
 

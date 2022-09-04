@@ -15,7 +15,7 @@ else
     CFLAGS = -O2 -s "EXPORTED_FUNCTIONS=['_main', '_genTexture', '_getTexture']" -s "EXTRA_EXPORTED_RUNTIME_METHODS=['ccall', 'cwrap', 'getValue']"  -Izlib -Ilibpng12 --pre-js pre-demo.js --post-js post-demo.js  -pedantic -Wall -Wextra -std=c99 -g
 endif
 
-demo.html: demo.o aes128.o libcrypto.a
+demo.html: demo.o aes128.o libpng.a libz.a
 	$(CC) $(CFLAGS) $^ -o $@
 
 aes128.o: aes128.c aes128.h
