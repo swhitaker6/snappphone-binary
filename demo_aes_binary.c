@@ -4,11 +4,11 @@
 // found in the LICENSE file.
 
 #include <stdio.h>
+#include <stdint.h>
 #include <string.h>
+#include <stdlib.h>
 #include "png.h"
-#include <openssl/evp.h>
-#include <openssl/bio.h>
-#include <openssl/err.h>
+#include "chacha20_simple.h"
 #include <SDL/SDL.h>
 #include <SDL/SDL_image.h>
 
@@ -27,8 +27,9 @@ struct {
 	char point[4];
 } user_ptr;
 
-unsigned char key[] = "0123456789abcdeF";
-unsigned char iv[] = "1234567887654321";
+uint8_t key[32];
+uint8_t nonce[8];
+uint64_t counter = 0;
 
 int num_row_bytes;
 int BYTES_PER_PIXEL;
@@ -59,11 +60,25 @@ png_structp png_ptr;
 png_infop read_info_ptr;
 png_infop write_info_ptr;
 
-int filesize;
+int pngSize;
 int bufferSize;
-png_bytep filebytes;
+png_bytep pngBuffer;
 png_bytep processedBytes;
-int expansion_factor = 2;
+int expansion_factor = 6;
+
+
+void hex2byte(const char *hex, uint8_t *byte)
+{
+  
+  while (*hex) { 
+    
+    sscanf(hex, "%2hhx", byte++); 
+    hex += 2; 
+    
+  }
+
+}
+
 
 
  void end_callback(png_structp png_ptr, png_infop info) {
@@ -375,7 +390,7 @@ void write_row_callback(png_structp png_ptr, png_uint_32 row, int pass)
 
 void read_row_callback(png_structp png_ptr, png_uint_32 row, int pass)
 {
-  printf("row: %u, pass: %i\n", row, pass);
+  // printf("row: %u, pass: %i\n", row, pass);
   
 }
 
@@ -399,7 +414,7 @@ SDL_Surface *createRGBSurfaceFromPNG(void *png_buff, int width, int height, int 
 
 
 
-void custom_read_fn(png_structp png_ptr, png_bytep data, size_t read_length) {
+void png_read_fn(png_structp png_ptr, png_bytep data, size_t read_length) {
 
       png_bytep filebytes;
 
@@ -409,11 +424,11 @@ void custom_read_fn(png_structp png_ptr, png_bytep data, size_t read_length) {
 
       png_data = filebytes + offset;
 
-      // printf("read_length: %X\n", (unsigned int)read_length);
+      printf("read_length: %u\n", (unsigned int)read_length);
 
       offset += read_length;
 
-      // printf("offset: %X\n", (unsigned int)offset);
+      printf("offset: %u\n", (unsigned int)offset);
 
       memcpy(data, png_data, read_length);
 
@@ -425,7 +440,7 @@ void custom_read_fn(png_structp png_ptr, png_bytep data, size_t read_length) {
 
 
 
-void custom_write_fn(png_structp png_ptr, png_bytep data, size_t read_length) {
+void png_write_fn(png_structp png_ptr, png_bytep data, size_t read_length) {
 
       png_bytep filebytes;
 
@@ -435,11 +450,11 @@ void custom_write_fn(png_structp png_ptr, png_bytep data, size_t read_length) {
 
       png_data = filebytes + offset;
 
-      printf("read_length: %X\n", (unsigned int)read_length);
+      printf("write_length: %u\n", (unsigned int)read_length);
 
       offset += read_length;
 
-      printf("offset: %X\n", (unsigned int)offset);
+      printf("offset: %u\n", (unsigned int)offset);
 
       memcpy(png_data, data, read_length);
 
@@ -453,7 +468,7 @@ void custom_write_fn(png_structp png_ptr, png_bytep data, size_t read_length) {
 
 void output_flush_fn(png_structp png_ptr) {
 
-    printf("output_flush: %X\n", 1);
+    printf("output_flushed: %X\n", 1);
 
 
 }
@@ -461,9 +476,13 @@ void output_flush_fn(png_structp png_ptr) {
 
 
 int main() {
+
+  // hex2byte("1c9240a5eb55d38af333888604f6b5f0473917c1402b80099dca5cbc207075c0", key);
+  // hex2byte("0000000000000002", nonce);
+
   
-  EVP_CIPHER_CTX *ctx = NULL;
-  EVP_CIPHER *aes128ctr = NULL;
+  const uint8_t *key = 0;
+  chacha20_ctx ctx;
   unsigned int len = 0;
   unsigned char *outfilebytes = NULL;
   int ret = 1;
@@ -475,18 +494,20 @@ int main() {
   int height;
   int width;   
   int depth;
+  int channels;
   int row_bytes;
   int do_encrypt = 1;   
 
 
-  FILE *pfile = fopen("test/cube_explosion.png", "rb");
-  // FILE *pfile = fopen("test/hello_world_file.txt", "rb");
+  FILE *pfile = fopen("images/sandscape.png", "rb");
+  // FILE *pfile = fopen("images/hello_world_file.txt", "rb");
   if (!pfile) {
     printf("cannot open file\n");
     return 1;
   }
   
   unsigned char sig[8];
+
 
   fread(sig, 1, 8, pfile);
   if (!png_check_sig(sig, 8)) {
@@ -547,30 +568,38 @@ int main() {
 
   fseek(pfile, 0, SEEK_END);
 
-  filesize = ftell(pfile);
+  pngSize = ftell(pfile);
 
   fseek(pfile, 0, SEEK_SET);
 
-  printf("filesize = %u \n", filesize);
+  printf("pngSize = %u \n", pngSize);
 
-  bufferSize = filesize*expansion_factor;
+  bufferSize = pngSize*expansion_factor;
+
+
+
+  
 
   printf("bufferSize = %u \n", bufferSize);
 
-  filebytes = (png_bytep)png_malloc(read_ptr, bufferSize);
+  pngBuffer = (png_bytep)png_malloc(read_ptr, bufferSize);
 
-  fread(filebytes, 1, filesize, pfile);
+  fread(pngBuffer, 1, pngSize, pfile);
 
   fclose (pfile);
 
+
+
+  /////////////////////////////////////////////////// pngBuffer, pngSize, bufferSize
+
   for(int i=0; i<8; i++) {
 
-    printf("signature: %X\n", filebytes[i]);
+    printf("signature: %X\n", pngBuffer[i]);
 
   }
 
 
-  png_set_read_fn(read_ptr, filebytes, custom_read_fn);
+  png_set_read_fn(read_ptr, pngBuffer, png_read_fn);
 
   png_set_read_status_fn(read_ptr, read_row_callback);
 
@@ -584,84 +613,90 @@ int main() {
   height = (unsigned int)png_get_image_height(read_ptr, read_info_ptr);
   width = (unsigned int)png_get_image_width(read_ptr, read_info_ptr);   
   depth = (unsigned int)png_get_bit_depth(read_ptr, read_info_ptr);
+  channels = (unsigned int)png_get_channels(read_ptr, read_info_ptr);
   row_bytes = (unsigned int)png_get_rowbytes(read_ptr, read_info_ptr);
+
   printf("Image height is %u \n", (unsigned int)png_get_image_height(read_ptr, read_info_ptr)); 
   printf("Image width is %u \n", (unsigned int)png_get_image_width(read_ptr, read_info_ptr)); 
-  printf("BitsPerPixel is %u \n", (unsigned int)png_get_bit_depth(read_ptr, read_info_ptr));
-  // printf("BytesPerPixel is %u \n", png_get_pixel_aspect_ratio(read_ptr, read_info_ptr));
+  printf("BitsPerPixel is %u \n", depth * channels);
+  printf("BytesPerPixel is %u \n", (unsigned int)png_get_channels(read_ptr, read_info_ptr));
   printf("Image stride is %u \n", (unsigned int)png_get_rowbytes(read_ptr, read_info_ptr));
 
+  height = (unsigned int)png_get_image_height(write_ptr, write_info_ptr);
+  width = (unsigned int)png_get_image_width(write_ptr, write_info_ptr);   
+  depth = (unsigned int)png_get_bit_depth(write_ptr, write_info_ptr);
+  channels = (unsigned int)png_get_channels(write_ptr, write_info_ptr);
+  row_bytes = (unsigned int)png_get_rowbytes(write_ptr, write_info_ptr);
+  printf("Image height is %u \n", (unsigned int)png_get_image_height(write_ptr, write_info_ptr)); 
+  printf("Image width is %u \n", (unsigned int)png_get_image_width(write_ptr, write_info_ptr)); 
+  printf("BitsPerPixel is %u \n", depth * channels);
+  printf("BytesPerPixel is %u \n", (unsigned int)png_get_channels(write_ptr, write_info_ptr));
+  printf("Image stride is %u \n", (unsigned int)png_get_rowbytes(write_ptr, write_info_ptr));
 
-  unsigned char outbuf[row_bytes + EVP_MAX_BLOCK_LENGTH];
-  int outlen;
+  printf("BEFORE encrypt/decrypt - ");
 
-  ctx = EVP_CIPHER_CTX_new();
-  if (ctx == NULL)
-      goto err;
+  for(int i=0; i<row_bytes; i++) {
 
+    printf("%X", row_pointers[height/2][i]);
 
-
-  // aes128ctr = EVP_CIPHER_fetch(NULL, "AES-128-CTR", NULL);
-  // if (aes128ctr == NULL)
-  //     goto err;
-
-
-  if (!EVP_CipherInit_ex2(ctx, EVP_aes_128_ctr(), NULL, NULL, do_encrypt, NULL))
-      goto err;
-
-  OPENSSL_assert(EVP_CIPHER_CTX_get_key_length(ctx) == 16);
-  OPENSSL_assert(EVP_CIPHER_CTX_get_iv_length(ctx) == 16);
+  }
 
 
-  if (!EVP_CipherInit_ex2(ctx, NULL, key, iv, do_encrypt, NULL))
-      goto err;
+  unsigned char outbuf[row_bytes];
 
+  chacha20_setup(&ctx, key, sizeof(key), nonce);
+  
+  memset(outbuf, 0, len);
+  chacha20_counter_set(&ctx, counter);
 
   for (size_t i = 0; i < height; i++)
   {
 
+    chacha20_encrypt(&ctx, row_pointers[i], outbuf, row_bytes);
 
-    for(int j=0; j<8; j++) {
-
-      printf("BEFORE aes encryption %u: %X\n", (unsigned int)i, row_pointers[i][j]);
-
-    }
-
-
-
-    if (!EVP_CipherUpdate(ctx, outbuf, &outlen, row_pointers[i], row_bytes))
-        goto err;
-
-     for (size_t j = 0; j < row_bytes; j++)
-     {
-          row_pointers[i][j] = outbuf[j];
-     }
-
-    printf("out length is %u \n", outlen);       
-                        
-
-
-    for(int j=0; j<8; j++) {
-
-      printf("AFTER aes encryption %u: %X\n", (unsigned int)i, row_pointers[i][j]);
-
-    }
-
+    memcpy(row_pointers[i], outbuf, row_bytes);
 
   }
 
-  if (!EVP_CipherFinal_ex(ctx, outbuf, &outlen)) {
-    /* Error */
-    goto err;
+  printf("\n AFTER encrypte/decrypt - ");
+
+  for(int i=0; i<row_bytes; i++) {
+
+    printf("%X", row_pointers[height/2][i]);
+
   }
+
+  // counter = 0;  
+  // memset(outbuf, 0, len);
+  // chacha20_counter_set(&ctx, counter);
+
+  // for (size_t i = 0; i < height; i++)
+  // {
+
+  //   chacha20_encrypt(&ctx, row_pointers[i], outbuf, row_bytes);
+
+  //   memcpy(row_pointers[i], outbuf, row_bytes);
+
+  // }
+
+  // printf("\n AFTER encrypte/decrypt - ");
+
+  // for(int i=0; i<row_bytes; i++) {
+
+  //   printf("%X", row_pointers[height/2][i]);
+
+  // }
+
+
+
+
 
   ret = 0;
 
  err:
   /* Clean up all the resources we allocated */
-  EVP_CIPHER_CTX_free(ctx);
   if (ret != 0) {
-    ERR_print_errors_fp(stderr);
+    // ERR_print_errors_fp(stderr);
     return ret;
   }
 
@@ -669,15 +704,17 @@ int main() {
 
   png_set_rows(write_ptr, write_info_ptr, row_pointers);    
 
-  memset(filebytes, 0, bufferSize); 
+  offset = 0;
+
+  memset(pngBuffer, 0, bufferSize); 
 
   for(int i=0; i<8; i++) {
 
-    printf("buffer cleared: %X\n", filebytes[i]);
+    printf("buffer cleared: %X\n", pngBuffer[i]);
 
   }
 
-  png_set_write_fn(write_ptr, filebytes, custom_write_fn, output_flush_fn);
+  png_set_write_fn(write_ptr, pngBuffer, png_write_fn, output_flush_fn);
 
   png_set_write_status_fn(png_ptr, write_row_callback);
 
@@ -686,21 +723,22 @@ int main() {
 
   for(int i=0; i<8; i++) {
 
-    printf("buffer written: %X\n", filebytes[i]);
+    printf("buffer written: %X\n", pngBuffer[i]);
 
   }
 
 
-  pfile = fopen("test/cube_explosion.png", "wb");
-  // FILE *pfile = fopen("test/hello_world_file.txt", "rb");
+  pfile = fopen("images/sandscape.png", "wb");
+  // FILE *pfile = fopen("images/hello_world_file.txt", "rb");
   if (!pfile) {
     printf("cannot open file\n");
     return 1;
   }
 
+  pngSize = offset;
 
-  fwrite(filebytes, 1, filesize, pfile);
-  if (!png_check_sig(filebytes, 8)) {
+  fwrite(pngBuffer, 1, pngSize, pfile);
+  if (!png_check_sig(pngBuffer, 8)) {
     printf("bad signature\n");
     return 2;   /* bad signature */
   } else {
@@ -709,7 +747,20 @@ int main() {
 
 
 
-  free(filebytes);
+  fseek(pfile, 0, SEEK_END);
+
+  pngSize = ftell(pfile);
+
+  fseek(pfile, 0, SEEK_SET);
+
+  printf("finalWriteOffset = %u \n", offset);
+
+  printf("pngSize = %u \n", pngSize);
+
+
+  fclose (pfile);
+
+  free(pngBuffer);
 
   png_destroy_write_struct(&read_ptr, &read_info_ptr);
 
@@ -757,7 +808,7 @@ int main() {
   //    return 0;
   // }  
 
-  image = IMG_Load("test/cube_explosion.png");
+  image = IMG_Load("images/sandscape.png");
   
   if (!image)
   {
