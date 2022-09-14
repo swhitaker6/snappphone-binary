@@ -17,3 +17,12 @@
 
 
 
+int initialize_png_writer(void);
+
+
+int initialize_png_reader(void);
+
+
+void info_callback(png_structp, png_infop);
+
+

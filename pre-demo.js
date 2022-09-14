@@ -41,7 +41,7 @@
  * If set to true, main() will not automatically be called. 
  *
  */
-Module['noInitialRun'] = true;
+Module['noInitialRun'] = false;
 
 //var genTexture = Module.cwrap('_genTexture', 'number', [ 'nunber', 'number' ], [ 'page', 'buf' ]);
 

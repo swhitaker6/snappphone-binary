@@ -69,6 +69,7 @@ void test_keystream(const char *text_key, const char *text_nonce, const char *te
 void test_encipherment(const char *text_key, const char *text_nonce, const char *text_plain, const char *text_cipher, uint64_t counter, unsigned int number)
 {
   chacha20_ctx ctx;
+  chacha20_ctx svc;
   size_t i = 0;
   uint8_t key[32];
   uint8_t nonce[8];
@@ -88,7 +89,7 @@ void test_encipherment(const char *text_key, const char *text_nonce, const char 
   //Exact length test
   memset(output, 0, len);
   chacha20_counter_set(&ctx, counter);
-  chacha20_encrypt(&ctx, plain, output, len);
+  chacha20_encrypt(&ctx, &svc, plain, output, len, 1);
   if (memcmp(output, cipher, len))
   {
     puts("Failed exact length");
@@ -103,7 +104,7 @@ void test_encipherment(const char *text_key, const char *text_nonce, const char 
     chacha20_counter_set(&ctx, counter);
     for (j = 0; j < len; j += i)
     {
-      chacha20_encrypt(&ctx, plain+j, output+j, MIN(i, len-j));
+      chacha20_encrypt(&ctx, &svc, plain+j, output+j, MIN(i, len-j), 1);
     }
     if (memcmp(output, cipher, len))
     {
@@ -120,7 +121,7 @@ void test_encipherment(const char *text_key, const char *text_nonce, const char 
     for (j = 0; j < len; j += amount)
     {
       amount = rand() & 15;
-      chacha20_encrypt(&ctx, plain+j, output+j, MIN(amount, len-j));
+      chacha20_encrypt(&ctx, &svc, plain+j, output+j, MIN(amount, len-j), 1);
     }
     if (memcmp(output, cipher, len))
     {
@@ -137,7 +138,7 @@ void test_encipherment(const char *text_key, const char *text_nonce, const char 
     for (j = 0; j < len; j += amount)
     {
       amount = 65 + (rand() & 63);
-      chacha20_encrypt(&ctx, plain+j, output+j, MIN(amount, len-j));
+      chacha20_encrypt(&ctx, &svc, plain+j, output+j, MIN(amount, len-j), 1);
     }
     if (memcmp(output, cipher, len))
     {

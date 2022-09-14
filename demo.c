@@ -8,16 +8,32 @@
 *
 */
 #include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
 #include <stdio.h>
-#include "aes128.h"
+#include "png.h"
+#include "chacha20_simple.h"
+#include <SDL/SDL.h>
+#include <SDL/SDL_image.h>
+// #include "aes128.h"
 #include "demo.h"
 
 
 #define UNUSED_    __attribute__((unused))
 
+
+uint8_t ctxKey[32];
+uint8_t ctxNonce[8];
+uint64_t ctxCounter = 0;
+
+uint8_t svcKey[32];
+uint8_t svcNonce[8];
+uint64_t svcCounter = 0;
+
+int offset = 0;
 png_bytep mem_ptr;
 
-void dump(char *s, uint32_t *buf, size_t sz);
+// void dump(char *s, uint32_t *buf, size_t sz);
 int mem_isequal(const uint32_t *x, const uint32_t *y, size_t sz);
 
 
@@ -51,8 +67,9 @@ png_bytep *row_pointers;
 // png_infop info_ptr;
 // png_infop write_info_ptr;
 
+png_structp png_ptr;
 png_structp read_ptr;
-png_infop info_ptr, end_info_ptr;
+png_infop info_ptr, read_info_ptr, end_info_ptr;
 
 png_structp write_ptr;
 png_infop write_info_ptr;
@@ -67,6 +84,13 @@ int bit_depth, color_type;
 int total_bytes = 0;
 int file_size;
 
+int pngSize;
+int bufferSize;
+png_bytep pngBuffer;
+png_bytep processedBytes;
+int expansion_factor = 6;
+
+
 
 // void read_data(png_structp png_ptr, png_bytep data, png_size_t length, uint32_t *texture) {
 
@@ -79,6 +103,20 @@ int file_size;
 // 	}
 
 // }
+
+
+void hex2byte(const char *hex, uint8_t *byte)
+{
+  
+  while (*hex) { 
+    
+    sscanf(hex, "%2hhx", byte++); 
+    hex += 2; 
+    
+  }
+
+}
+
 
 
 
@@ -97,13 +135,13 @@ void write_data(png_structp png_ptr, png_bytep data, png_size_t length) {
 
 	int write_length = ((length < 64) ? length : 64);
 
-				printf("%s%u\n\t", "current write data length: ", length);
+				printf("%s%u\n\t", "current write data length: ", (unsigned int)length);
 				printf("%s%u\n\t", "total bytes written: ", total_bytes);				
 				for (int l = 0; l < write_length; l++)
 					printf("%02x%s", data[l], ((l % 16 == 15)/* && (l < 64 - 1)*/) ? "\n\t" : " ");
 				printf("\n ");			
 
-	for(int i=0; i < length; i++) {
+	for(int i=0; i < (int)length; i++) {
 
 		png[png_offset + i] = data[i];
 
@@ -137,10 +175,12 @@ void info_callback(png_structp png_ptr, png_infop info) {
    //Transferring info struct
    {
       int interlace_type, compression_type, filter_type;
-
-      if (png_get_IHDR(read_ptr, info_ptr, &width, &height, &bit_depth,
+      printf("INSIDE INFO_CALLBACK FUNTION");
+      if (png_get_IHDR(read_ptr, read_info_ptr, &width, &height, &bit_depth,
           &color_type, &interlace_type, &compression_type, &filter_type) != 0)
       {
+         printf("SETTING IHDR INFO ITEMS IN WRITE INFO STRUCT TO...");
+         printf("width = %u, height = %u, bit_depth = %i \n");
          png_set_IHDR(write_ptr, write_info_ptr, width, height, bit_depth,
             color_type, interlace_type, compression_type, filter_type);
 
@@ -159,7 +199,7 @@ void info_callback(png_structp png_ptr, png_infop info) {
                 /*NOT REACHED*/
          }
 
-		num_row_bytes = png_get_rowbytes(png_ptr, info_ptr);
+		num_row_bytes = png_get_rowbytes(png_ptr, read_info_ptr);
 
       }
    }
@@ -170,7 +210,7 @@ void info_callback(png_structp png_ptr, png_infop info) {
             png_fixed_point white_x, white_y, red_x, red_y, green_x, green_y, blue_x,
             blue_y;
 
-            if (png_get_cHRM_fixed(read_ptr, info_ptr, &white_x, &white_y,
+            if (png_get_cHRM_fixed(read_ptr, read_info_ptr, &white_x, &white_y,
             &red_x, &red_y, &green_x, &green_y, &blue_x, &blue_y) != 0)
             {
             png_set_cHRM_fixed(write_ptr, write_info_ptr, white_x, white_y, red_x,
@@ -182,7 +222,7 @@ void info_callback(png_structp png_ptr, png_infop info) {
       {
             png_fixed_point gamma;
 
-            if (png_get_gAMA_fixed(read_ptr, info_ptr, &gamma) != 0)
+            if (png_get_gAMA_fixed(read_ptr, read_info_ptr, &gamma) != 0)
             png_set_gAMA_fixed(write_ptr, write_info_ptr, gamma);
       }
    }
@@ -193,7 +233,7 @@ void info_callback(png_structp png_ptr, png_infop info) {
             double white_x, white_y, red_x, red_y, green_x, green_y, blue_x,
             blue_y;
 
-            if (png_get_cHRM(read_ptr, info_ptr, &white_x, &white_y, &red_x,
+            if (png_get_cHRM(read_ptr, read_info_ptr, &white_x, &white_y, &red_x,
             &red_y, &green_x, &green_y, &blue_x, &blue_y) != 0)
             {
             png_set_cHRM(write_ptr, write_info_ptr, white_x, white_y, red_x,
@@ -205,7 +245,7 @@ void info_callback(png_structp png_ptr, png_infop info) {
       {
             double gamma;
 
-            if (png_get_gAMA(read_ptr, info_ptr, &gamma) != 0)
+            if (png_get_gAMA(read_ptr, read_info_ptr, &gamma) != 0)
             png_set_gAMA(write_ptr, write_info_ptr, gamma);
       }
    }
@@ -216,7 +256,7 @@ void info_callback(png_structp png_ptr, png_infop info) {
       png_uint_32 proflen;
       int compression_type;
 
-      if (png_get_iCCP(read_ptr, info_ptr, &name, &compression_type,
+      if (png_get_iCCP(read_ptr, read_info_ptr, &name, &compression_type,
                       &profile, &proflen) != 0)
       {
          png_set_iCCP(write_ptr, write_info_ptr, name, compression_type,
@@ -227,7 +267,7 @@ void info_callback(png_structp png_ptr, png_infop info) {
    {
       int intent;
 
-      if (png_get_sRGB(read_ptr, info_ptr, &intent) != 0)
+      if (png_get_sRGB(read_ptr, read_info_ptr, &intent) != 0)
          png_set_sRGB(write_ptr, write_info_ptr, intent);
    }
 
@@ -235,14 +275,14 @@ void info_callback(png_structp png_ptr, png_infop info) {
       png_colorp palette;
       int num_palette;
 
-      if (png_get_PLTE(read_ptr, info_ptr, &palette, &num_palette) != 0)
+      if (png_get_PLTE(read_ptr, read_info_ptr, &palette, &num_palette) != 0)
          png_set_PLTE(write_ptr, write_info_ptr, palette, num_palette);
    }
    // PNG_bKGD_SUPPORTED
    {
       png_color_16p background;
 
-      if (png_get_bKGD(read_ptr, info_ptr, &background) != 0)
+      if (png_get_bKGD(read_ptr, read_info_ptr, &background) != 0)
       {
          png_set_bKGD(write_ptr, write_info_ptr, background);
       }
@@ -251,7 +291,7 @@ void info_callback(png_structp png_ptr, png_infop info) {
    {
       png_uint_16p hist;
 
-      if (png_get_hIST(read_ptr, info_ptr, &hist) != 0)
+      if (png_get_hIST(read_ptr, read_info_ptr, &hist) != 0)
          png_set_hIST(write_ptr, write_info_ptr, hist);
    }
   // PNG_oFFs_SUPPORTED
@@ -259,7 +299,7 @@ void info_callback(png_structp png_ptr, png_infop info) {
       png_int_32 offset_x, offset_y;
       int unit_type;
 
-      if (png_get_oFFs(read_ptr, info_ptr, &offset_x, &offset_y,
+      if (png_get_oFFs(read_ptr, read_info_ptr, &offset_x, &offset_y,
           &unit_type) != 0)
       {
          png_set_oFFs(write_ptr, write_info_ptr, offset_x, offset_y, unit_type);
@@ -273,7 +313,7 @@ void info_callback(png_structp png_ptr, png_infop info) {
       png_int_32 X0, X1;
       int type, nparams;
 
-      if (png_get_pCAL(read_ptr, info_ptr, &purpose, &X0, &X1, &type,
+      if (png_get_pCAL(read_ptr, read_info_ptr, &purpose, &X0, &X1, &type,
          &nparams, &units, &params) != 0)
       {
          png_set_pCAL(write_ptr, write_info_ptr, purpose, X0, X1, type,
@@ -286,7 +326,7 @@ void info_callback(png_structp png_ptr, png_infop info) {
       png_uint_32 res_x, res_y;
       int unit_type;
 
-      if (png_get_pHYs(read_ptr, info_ptr, &res_x, &res_y,
+      if (png_get_pHYs(read_ptr, read_info_ptr, &res_x, &res_y,
           &unit_type) != 0)
          png_set_pHYs(write_ptr, write_info_ptr, res_x, res_y, unit_type);
    }
@@ -295,7 +335,7 @@ void info_callback(png_structp png_ptr, png_infop info) {
    {
       png_color_8p sig_bit;
 
-      if (png_get_sBIT(read_ptr, info_ptr, &sig_bit) != 0)
+      if (png_get_sBIT(read_ptr, read_info_ptr, &sig_bit) != 0)
          png_set_sBIT(write_ptr, write_info_ptr, sig_bit);
    }
 
@@ -306,7 +346,7 @@ void info_callback(png_structp png_ptr, png_infop info) {
       int unit;
       double scal_width, scal_height;
 
-      if (png_get_sCAL(read_ptr, info_ptr, &unit, &scal_width,
+      if (png_get_sCAL(read_ptr, read_info_ptr, &unit, &scal_width,
          &scal_height) != 0)
       {
          png_set_sCAL(write_ptr, write_info_ptr, unit, scal_width, scal_height);
@@ -318,7 +358,7 @@ void info_callback(png_structp png_ptr, png_infop info) {
 //       int unit;
 //       png_charp scal_width, scal_height;
 
-//       if (png_get_sCAL_s(read_ptr, info_ptr, &unit, &scal_width,
+//       if (png_get_sCAL_s(read_ptr, read_info_ptr, &unit, &scal_width,
 //           &scal_height) != 0)
 //       {
 //          png_set_sCAL_s(write_ptr, write_info_ptr, unit, scal_width,
@@ -332,7 +372,7 @@ void info_callback(png_structp png_ptr, png_infop info) {
       int num_trans;
       png_color_16p trans_color;
 
-      if (png_get_tRNS(read_ptr, info_ptr, &trans_alpha, &num_trans,
+      if (png_get_tRNS(read_ptr, read_info_ptr, &trans_alpha, &num_trans,
          &trans_color) != 0)
       {
          int sample_max = (1 << bit_depth);
@@ -352,7 +392,7 @@ void info_callback(png_structp png_ptr, png_infop info) {
 
 
 
-	png_start_read_image(png_ptr);
+	// png_start_read_image(png_ptr);
 
 }
 
@@ -496,6 +536,7 @@ int initialize_png_reader() {
 	if(setjmp(png_jmpbuf(read_ptr))){
 		png_destroy_read_struct(&read_ptr, (png_infopp)NULL, (png_infopp)NULL);
 		return 0;
+
 	}
 
 	png_set_progressive_read_fn(read_ptr, &user, info_callback, row_callback, end_callback);
@@ -504,6 +545,48 @@ int initialize_png_reader() {
 	return 1;
 
 }
+
+
+
+
+// int aes_encrypt_decrypt(aes_context ctx, uint32_t *png, int sz, int page, int w, int h, bool env) {
+
+// 	int imgSize;
+// 	int rem;
+// 	int nBlks;
+
+// 	imgSize = process_data(png, sz);
+
+// 	rem = imgSize % 16 ? 1 : 0;
+
+// 	nBlks = (imgSize/16)+rem;
+
+// 	printf("# wasm-CTR test\n");
+	
+// 	dump("SANITY CHECK...PNG File BEFORE:", png, sz); // PRINT PNG FILE BYTES TO STDOUT
+
+// 	dump("PNG Image BEFORE:", *row_pointers, sz); // PRINT IMAGE DATA BEFORE
+
+// 	aes128_setExpKey(&ctx, ctx.enckey);  // LOAD ENCRYPTION KEY INTO THE CONTEXT
+
+// 	aes128_offsetCtr(&ctx.blk.ctr[0], page, nBlks);
+
+// 	aes128_encrypt_progressive(&ctx, row_pointers, num_row_bytes, w, h, env); // todo: remove temp 'kstr' argument
+	
+
+// 	ctx.blk.ctr[0] = 0x00;
+// 	ctx.blk.ctr[1] = 0x00;
+// 	ctx.blk.ctr[2] = 0x00;
+// 	ctx.blk.ctr[3] = 0x00;
+
+
+// 	aes128_done(&ctx);
+
+
+// }
+
+
+
 
 
 
@@ -529,9 +612,59 @@ int process_data(png_bytep buffer, png_uint_32 length){
 }
 
 
+void write_row_callback(png_structp png_ptr, png_uint_32 row, int pass)
+{
+  printf("row: %u, pass: %i\n", row, pass);
+  
+}
 
 
-int genTexture(int page, uint32_t *png, int sz, int w, int h, bool env) {
+
+
+
+void read_row_callback(png_structp png_ptr, png_uint_32 row, int pass)
+{
+   printf("INSIDE READ_ROW_CALLBACK");
+  printf("row: %u, pass: %i\n", row, pass);
+  
+}
+
+
+
+
+void png_read_fn(png_structp png_ptr, png_bytep data, size_t read_length) {
+
+      printf("INSIDE PNG_READ_FN");
+      
+      png_bytep filebytes;
+
+      png_byte* png_data;
+
+      printf("ABOUT TO CAL PNG_GET_IO_PTR");
+      filebytes = (png_bytep)png_get_io_ptr(png_ptr);
+
+      png_data = filebytes + offset;
+
+      printf("read_length: %u\n", (unsigned int)read_length);
+
+      offset += read_length;
+
+      printf("offset: %u\n", (unsigned int)offset);
+
+      memcpy(data, png_data, read_length);
+      printf("FINISHED MEMCPY CALL");
+
+
+
+}
+
+
+
+
+
+
+
+int genTexture(int page, uint32_t *png, int sz, int w, int h, int env) {
 
 	mem_ptr = (png_bytep) png;
 
@@ -547,51 +680,97 @@ int genTexture(int page, uint32_t *png, int sz, int w, int h, bool env) {
 	// int nBlks = (sz/16)+rem;
 
 	//INIT_AES_CONTEXT(ctx);
-	static aes_context ctx;
+	chacha20_ctx ctx;
+	chacha20_ctx svc;
+	// static aes_context ctx;
+    const uint8_t *key = 0;
 
 	int rc;
 	// uint32_t i;
+	int row_bytes;
 
 	initialize_png_reader();
 
 	initialize_png_writer();
 
-	row_pointers = png_calloc(read_ptr, h*sizeof(png_bytep));
+	png_set_read_fn(read_ptr, png, png_read_fn);
+
+	png_set_read_status_fn(read_ptr, read_row_callback);
+
+	png_read_png(read_ptr, read_info_ptr, PNG_TRANSFORM_IDENTITY, NULL);
+
+	info_callback(read_ptr, read_info_ptr);
+
+	row_bytes = (unsigned int)png_get_rowbytes(read_ptr, read_info_ptr);
+
+  	row_pointers = png_get_rows(read_ptr, read_info_ptr);
+	// row_pointers = png_calloc(read_ptr, h*sizeof(png_bytep));
 	// row_pointers = png_malloc(read_ptr, h*sizeof(png_bytep));
 
-	imgSize = process_data(png, sz);
 
-	rem = imgSize % 16 ? 1 : 0;
+////////////////////////////////////////////////////////////////////////////////
 
-	nBlks = (imgSize/16)+rem;
+	// imgSize = process_data(png, sz);
 
-	printf("# wasm-CTR test\n");
+	// rem = imgSize % 16 ? 1 : 0;
+
+	// nBlks = (imgSize/16)+rem;
+
+	// printf("# wasm-CTR test\n");
 	
-	dump("SANITY CHECK...PNG File BEFORE:", png, sz); // PRINT PNG FILE BYTES TO STDOUT
+	// dump("SANITY CHECK...PNG File BEFORE:", png, sz); // PRINT PNG FILE BYTES TO STDOUT
 
-	dump("PNG Image BEFORE:", *row_pointers, sz); // PRINT IMAGE DATA BEFORE
+	// dump("PNG Image BEFORE:", *row_pointers, sz); // PRINT IMAGE DATA BEFORE
 
-	aes128_setExpKey(&ctx, ctx.enckey);  // LOAD ENCRYPTION KEY INTO THE CONTEXT
+	// aes128_setExpKey(&ctx, ctx.enckey);  // LOAD ENCRYPTION KEY INTO THE CONTEXT
 
-	aes128_offsetCtr(&ctx.blk.ctr[0], page, nBlks);
+	// aes128_offsetCtr(&ctx.blk.ctr[0], page, nBlks);
 
-	aes128_encrypt_progressive(&ctx, row_pointers, num_row_bytes, w, h, env); // todo: remove temp 'kstr' argument
+	// aes128_encrypt_progressive(&ctx, row_pointers, num_row_bytes, w, h, env); // todo: remove temp 'kstr' argument
 	
-	// dump("keyStr:", kstr, sz); // PRINT ENCRYPTION KEY STREAM
-	
-	
-	// rc = mem_isequal(*row_pointers, aes128_TV, 16);// COMPARE TO AES TEST VECTOR
 
-	// printf("\t^ %s\n", (rc == 0) ? "Ok" : "INVALID" );
-
-
-	ctx.blk.ctr[0] = 0x00;
-	ctx.blk.ctr[1] = 0x00;
-	ctx.blk.ctr[2] = 0x00;
-	ctx.blk.ctr[3] = 0x00;
+	// ctx.blk.ctr[0] = 0x00;
+	// ctx.blk.ctr[1] = 0x00;
+	// ctx.blk.ctr[2] = 0x00;
+	// ctx.blk.ctr[3] = 0x00;
 
 
-	aes128_done(&ctx);
+	// aes128_done(&ctx);
+
+////////////////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////////////
+  
+  
+  hex2byte("1c9240a5eb55d38af333888604f6b5f0473917c1402b80099dca5cbc207075c0", ctxKey);
+  hex2byte("0000000000000002", ctxNonce);
+
+  hex2byte("1c9240a5eb55d38af333888604f6b5f0473917c1402b80099dca5cbc207075c0", svcKey);
+  hex2byte("0000000000000002", svcNonce);
+
+  unsigned char outbuf[row_bytes];
+
+  chacha20_setup(&ctx, ctxKey, sizeof(ctxKey), ctxNonce);
+  chacha20_setup(&svc, svcKey, sizeof(svcKey), svcNonce);
+  
+  memset(outbuf, 0, row_bytes);
+  chacha20_counter_set(&ctx, ctxCounter);
+  chacha20_counter_set(&svc, svcCounter);
+
+  for (size_t i = 0; i < height; i++)
+  {
+
+    chacha20_encrypt(&ctx, &svc, row_pointers[i], outbuf, row_bytes, env);
+
+    memcpy(row_pointers[i], outbuf, row_bytes);
+
+  }
+
+
+	// chacha_encrypt_decrypt(png, sz);
+
+/////////////////////////////////////////////////////////////////////////////////////////
+
 
     png_write_info(write_ptr, write_info_ptr);	
 
@@ -621,9 +800,9 @@ int genTexture(int page, uint32_t *png, int sz, int w, int h, bool env) {
 
 			// process_data(png, sz);
 
-	dump("PNG File AFTER:", png, sz); // PRINT PNG FILE BYTES TO STDOUT
+	// dump("PNG File AFTER:", png, sz); // PRINT PNG FILE BYTES TO STDOUT
 
-	dump("PNG Image AFTER:", *row_pointers, sz); // PRINT IMAGE DATA AFTER
+	// dump("PNG Image AFTER:", *row_pointers, sz); // PRINT IMAGE DATA AFTER
 
 
 			//Destroying data structs
@@ -642,6 +821,8 @@ int genTexture(int page, uint32_t *png, int sz, int w, int h, bool env) {
 	png_destroy_write_struct(&write_ptr, &write_info_ptr);
 
 			//Destruction complete
+
+      return 0;
 
 
 }
@@ -869,84 +1050,699 @@ uint32_t getTexture(uint32_t page, uint32_t *tex) {
 	// 	Module._free(buf);
 	// })
 
-};
+   return 0;
+
+}
 
 
 
 
 
-int main (UNUSED_ int argc, UNUSED_ char *argv[])
+
+
+void png_write_fn(png_structp png_ptr, png_bytep data, size_t read_length) {
+
+      png_bytep filebytes;
+
+      png_byte* png_data;
+
+      filebytes = (png_bytep)png_get_io_ptr(png_ptr);
+
+      png_data = filebytes + offset;
+
+      printf("write_length: %u\n", (unsigned int)read_length);
+
+      offset += read_length;
+
+      printf("offset: %u\n", (unsigned int)offset);
+
+      memcpy(png_data, data, read_length);
+
+      for(int i=0; i<16 && i<(int)read_length; i++) {
+
+         printf("%X", png_data[i]);
+
+      }
+
+      printf("...\n");
+
+}
+
+
+
+
+
+void output_flush_fn(png_structp png_ptr) {
+
+    printf("output_flushed: %X\n", 1);
+
+
+}
+
+
+
+
+
+
+   /* Table of CRCs of all 8-bit messages. */
+   unsigned long crc_table[256];
+   
+   /* Flag: has the table been computed? Initially false. */
+   int crc_table_computed = 0;
+   
+   /* Make the table for a fast CRC. */
+   void make_crc_table(void)
+   {
+     unsigned long c;
+     int n, k;
+   
+     for (n = 0; n < 256; n++) {
+       c = (unsigned long) n;
+       for (k = 0; k < 8; k++) {
+         if (c & 1)
+           c = 0xedb88320L ^ (c >> 1);
+         else
+           c = c >> 1;
+       }
+       crc_table[n] = c;
+     }
+     crc_table_computed = 1;
+   }
+   
+   /* Update a running CRC with the bytes buf[0..len-1]--the CRC
+      should be initialized to all 1's, and the transmitted value
+      is the 1's complement of the final running CRC (see the
+      crc() routine below)). */
+   
+   unsigned long update_crc(unsigned long crc, unsigned char *buf,
+                            int len)
+   {
+     unsigned long c = crc;
+     int n;
+   
+     if (!crc_table_computed)
+       make_crc_table();
+     for (n = 0; n < len; n++) {
+       c = crc_table[(c ^ buf[n]) & 0xff] ^ (c >> 8);
+     }
+     return c;
+   }
+   
+   /* Return the CRC of the bytes buf[0..len-1]. */
+   unsigned long crc(unsigned char *buf, int len)
+   {
+     return update_crc(0xffffffffL, buf, len) ^ 0xffffffffL;
+   }
+
+
+
+
+
+
+
+
+
+int main ()
+// int main (UNUSED_ int argc, UNUSED_ char *argv[])
 {
 
-	static uint32_t enckey[16] = {
-		0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6,
-		0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c,
-	};
+  hex2byte("1c9240a5eb55d38af333888604f6b5f0473917c1402b80099dca5cbc207075c0", ctxKey);
+  hex2byte("0000000000000002", ctxNonce);
 
-	static uint32_t text[] = {
-		0x6b, 0xc1, 0xbe, 0xe2, 0x2e, 0x40, 0x9f, 0x96,
-		0xe9, 0x3d, 0x7e, 0x11, 0x73, 0x93, 0x17, 0x2a,
-		0xae, 0x2d, 0x8a, 0x57, 0x1e, 0x03, 0xac, 0x9c,
-		0x9e, 0xb7, 0x6f, 0xac, 0x45, 0xaf, 0x8e, 0x51,
-		0x30, 0xc8, 0x1c, 0x46, 0xa3, 0x5c, 0xe4, 0x11,
-		0xe5, 0xfb, 0xc1, 0x19, 0x1a, 0x0a, 0x52, 0xef,
-		0xf6, 0x9f, 0x24, 0x45, 0xdf, 0x4f, 0x9b, 0x17,
-		0xad, 0x2b, 0x41, 0x7b, 0xe6, 0x6c, 0x37, 0x10,
-	};
+  hex2byte("1c9240a5eb55d38af333888604f6b5f0473917c1402b80099dca5cbc207075c0", svcKey);
+  hex2byte("0000000000000002", svcNonce);
 
-	static uint32_t kstr[sizeof(text)];
+  int env = 1;
+  const uint8_t *key = 0;
+  chacha20_ctx ctx;
+  chacha20_ctx svc;
+  unsigned int len = 0;
+  unsigned char *outfilebytes = NULL;
+  int ret = 1;
+  // png_bytepp row_pointers;
+  SDL_Surface *image;
+  SDL_Surface *screen;
+  SDL_Surface *surface;
+  Uint32 rMask, gMask, bMask, aMask;
+  int height;
+  int width;   
+  int depth;
+  int channels;
+  int row_bytes;
+  int do_encrypt = 1;   
 
 
-	static rfc3686_blk ctr_blk = {
-		{0xf0, 0xf1, 0xf2, 0xf3},                         /* nonce   */
-		{0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9, 0xfa, 0xfb}, /* IV      */
-		// {0x00, 0x00, 0x00, 0x01}                          /* counter */
-		{0xfc, 0xfd, 0xfe, 0xff}                          /* counter */
-	};
+  FILE *pfile = fopen("images/sand.png", "rb");
+  // FILE *pfile = fopen("images/hello_world_file.txt", "rb");
+  if (!pfile) {
+    printf("cannot open file\n");
+    return 1;
+  }
+  
+  unsigned char sig[8];
+
+
+  fread(sig, 1, 8, pfile);
+  if (!png_check_sig(sig, 8)) {
+    printf("bad signature\n");
+    return 2;   /* bad signature */
+  } else {
+    printf("this is a PNG file\n");
+  }
+
+
+  // initialize_png_reader();
+  read_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, (png_voidp)NULL, NULL, NULL);
+
+  if (!read_ptr) {
+      return 3;
+  }
+
+  read_info_ptr = png_create_info_struct(read_ptr);
+
+  if (!read_info_ptr) {
+      png_destroy_read_struct(&read_ptr,
+          (png_infopp)NULL, (png_infopp)NULL);
+      return 4;
+  }
+
+
+  if (setjmp(png_jmpbuf(read_ptr)))
+  {
+      png_destroy_read_struct(&read_ptr, &read_info_ptr,
+          (png_infopp)NULL);
+      fclose(pfile);
+      return 5;
+  }
+
+
+
+    write_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+
+    if (!write_ptr)
+       return 6;
+
+    write_info_ptr = png_create_info_struct(write_ptr);
+    if (!write_info_ptr)
+    {
+       printf("COULD NOT CREATE WRITE INFO STRUCT");
+       png_destroy_write_struct(&write_ptr,
+           (png_infopp)NULL);
+       return 7;
+    }
+
+   if (setjmp(png_jmpbuf(write_ptr)))
+    {
+    png_destroy_write_struct(&write_ptr, &write_info_ptr);
+       fclose(pfile);
+       return 8;
+    }
+
+
+
+  fseek(pfile, 0, SEEK_END);
+
+  pngSize = ftell(pfile);
+
+  fseek(pfile, 0, SEEK_SET);
+
+  printf("pngSize = %u \n", pngSize);
+
+  bufferSize = pngSize*expansion_factor;
+
+
+
+  
+
+  printf("bufferSize = %u \n", bufferSize);
+
+  pngBuffer = (png_bytep)png_malloc(read_ptr, bufferSize);
+
+  fread(pngBuffer, 1, pngSize, pfile);
+
+  fclose (pfile);
+
+
+
+  /////////////////////////////////////////////////// pngBuffer, pngSize, bufferSize
+
+  for(int i=0; i<8; i++) {
+
+    printf("signature: %X\n", pngBuffer[i]);
+
+  }
+
+
+  png_set_read_fn(read_ptr, pngBuffer, png_read_fn);
+
+  png_set_read_status_fn(read_ptr, read_row_callback);
+
+  png_read_png(read_ptr, read_info_ptr, PNG_TRANSFORM_IDENTITY, NULL);
+
+  info_callback(read_ptr, read_info_ptr);
+
+  row_pointers = png_get_rows(read_ptr, read_info_ptr);
+
+
+  height = (unsigned int)png_get_image_height(read_ptr, read_info_ptr);
+  width = (unsigned int)png_get_image_width(read_ptr, read_info_ptr);   
+  depth = (unsigned int)png_get_bit_depth(read_ptr, read_info_ptr);
+  channels = (unsigned int)png_get_channels(read_ptr, read_info_ptr);
+  row_bytes = (unsigned int)png_get_rowbytes(read_ptr, read_info_ptr);
+
+  printf("Image height is %u \n", (unsigned int)png_get_image_height(read_ptr, read_info_ptr)); 
+  printf("Image width is %u \n", (unsigned int)png_get_image_width(read_ptr, read_info_ptr)); 
+  printf("BitsPerPixel is %u \n", depth * channels);
+  printf("BytesPerPixel is %u \n", (unsigned int)png_get_channels(read_ptr, read_info_ptr));
+  printf("Image stride is %u \n", (unsigned int)png_get_rowbytes(read_ptr, read_info_ptr));
+
+  height = (unsigned int)png_get_image_height(write_ptr, write_info_ptr);
+  width = (unsigned int)png_get_image_width(write_ptr, write_info_ptr);   
+  depth = (unsigned int)png_get_bit_depth(write_ptr, write_info_ptr);
+  channels = (unsigned int)png_get_channels(write_ptr, write_info_ptr);
+  row_bytes = (unsigned int)png_get_rowbytes(write_ptr, write_info_ptr);
+  printf("Image height is %u \n", (unsigned int)png_get_image_height(write_ptr, write_info_ptr)); 
+  printf("Image width is %u \n", (unsigned int)png_get_image_width(write_ptr, write_info_ptr)); 
+  printf("BitsPerPixel is %u \n", depth * channels);
+  printf("BytesPerPixel is %u \n", (unsigned int)png_get_channels(write_ptr, write_info_ptr));
+  printf("Image stride is %u \n", (unsigned int)png_get_rowbytes(write_ptr, write_info_ptr));
+
+  printf("BEFORE encrypt/decrypt - ");
+
+  for(int i=0; i<row_bytes; i++) {
+
+    printf("%X", row_pointers[height/2][i]);
+
+  }
+
+
+  unsigned char outbuf[row_bytes];
+
+  chacha20_setup(&ctx, ctxKey, sizeof(ctxKey), ctxNonce);
+  chacha20_setup(&svc, svcKey, sizeof(svcKey), svcNonce);
+  
+  memset(outbuf, 0, row_bytes);
+  chacha20_counter_set(&ctx, ctxCounter);
+  chacha20_counter_set(&svc, svcCounter);
+
+  for (size_t i = 0; i < (unsigned int)height; i++)
+  {
+
+    chacha20_encrypt(&ctx, &svc, row_pointers[i], outbuf, row_bytes, env);
+
+    memcpy(row_pointers[i], outbuf, row_bytes);
+
+  }
+
+  printf("\n AFTER encrypte/decrypt - ");
+
+  for(int i=0; i<row_bytes; i++) {
+
+    printf("%X", row_pointers[height/2][i]);
+
+  }
+
+//   ctxCounter = 0;  
+//   svcCounter = 0;  
+//   memset(outbuf, 0, len);
+//   chacha20_counter_set(&ctx, ctxCounter);
+//   chacha20_counter_set(&svc, svcCounter);
+
+//   for (size_t i = 0; i < (unsigned int)height; i++)
+//   {
+
+//     chacha20_encrypt(&ctx, &svc, row_pointers[i], outbuf, row_bytes, env);
+
+//     memcpy(row_pointers[i], outbuf, row_bytes);
+
+//   }
+
+//   printf("\n AFTER encrypte/decrypt - ");
+
+//   for(int i=0; i<row_bytes; i++) {
+
+//     printf("%X", row_pointers[height/2][i]);
+
+//   }
+
+
+
+
+
+  ret = 0;
+
+ err:
+  /* Clean up all the resources we allocated */
+  if (ret != 0) {
+    // ERR_print_errors_fp(stderr);
+    return ret;
+  }
+
+
+
+  png_set_rows(write_ptr, write_info_ptr, row_pointers);    
+
+
+  row_pointers = png_get_rows(write_ptr, write_info_ptr);
+
+
+   printf("\n AFTER PNG_SET_ROWS \n");
+
+  for(int i=0; i<row_bytes; i++) {
+
+    printf("%X", row_pointers[height/2][i]);
+
+  }
+
+  offset = 0;
+
+  memset(pngBuffer, 0, bufferSize); 
+
+   printf("/n");
+  for(int i=0; i<8; i++) {
+
+    printf("buffer cleared: %X\n", pngBuffer[i]);
+
+  }
+
+  png_set_write_fn(write_ptr, pngBuffer, png_write_fn, output_flush_fn);
+
+  png_set_write_status_fn(png_ptr, write_row_callback);
+
+  png_write_png(write_ptr, write_info_ptr, PNG_TRANSFORM_IDENTITY, NULL);
+
+
+  for(int i=0; i<8; i++) {
+
+    printf("buffer written: %X\n", pngBuffer[i]);
+
+  }
+
+
+//   pfile = fopen("images/sand.png", "wb");
+//   // FILE *pfile = fopen("images/hello_world_file.txt", "rb");
+//   if (!pfile) {
+//     printf("cannot open file\n");
+//     return 1;
+//   }
+
+//   pngSize = offset;
+
+//   fwrite(pngBuffer, 1, pngSize, pfile);
+//   if (!png_check_sig(pngBuffer, 8)) {
+//     printf("bad signature\n");
+//     return 2;   /* bad signature */
+//   } else {
+//     printf("this is a PNG file\n");
+//   }
+
+
+
+//   fseek(pfile, 0, SEEK_END);
+
+//   pngSize = ftell(pfile);
+
+//   fseek(pfile, 0, SEEK_SET);
+
+//   printf("finalWriteOffset = %u \n", offset);
+
+//   printf("pngSize = %u \n", pngSize);
+
+
+//   fclose (pfile);
+
+//   free(pngBuffer);
+
+  png_destroy_read_struct(&read_ptr, &read_info_ptr, NULL);
+
+  png_destroy_write_struct(&write_ptr, &write_info_ptr);
+
+
+
+
+
+
+
+
+  // png_free(filebytes);
+
+
+  // row_pointers = png_get_rows(png_ptr, info_ptr);
+
+  // for( int i=0; i<height; i++) {
+
+  //   printf("row_pointers %p \n", (void*)row_pointers[i]);
+
+  // }
+
+  // for( int i=0; i<row_bytes; i++) {
+
+  //   printf("row_pointers %u \n", row_pointers[240][i]);
+
+  // }
+
+
+
+  // //do transform with row_pointers
+
+
+  // //write transformed row pointers to png_out
+
+
+//   SDL_Init(SDL_INIT_VIDEO);
+
+//   SDL_RWops *rw = SDL_RWFromMem(pngBuffer, pngSize);
+
+//   SDL_Surface *temp = IMG_LoadPNG_RW(rw);
+
+//   if (temp == NULL) { 
+//    printf("Unable to load png: %s\n", SDL_GetError()); exit(1);
+//   }
+
+// //   SDL_Surface *image; 
+  
+//   image = SDL_DisplayFormat(temp);
+
+//   SDL_FreeSurface(temp);
+// //   image = IMG_Load("images/sand.png");
+  
+//   if (!image)
+//   {
+//      printf("IMG_Load: %s\n", IMG_GetError());
+//      return 0;
+//   }
+
+//   printf("Image height is %u \n", image->h); 
+//   printf("Image width is %u \n", image->w); 
+//   printf("BitsPerPixel is %u \n", image->format->BitsPerPixel);
+//   printf("BytesPerPixel is %u \n", image->format->BytesPerPixel);
+//   printf("Image stride is %u \n", image->pitch);
+
+
+//   screen = SDL_SetVideoMode(image->w, image->h, 32, SDL_SWSURFACE);
+
+//   SDL_BlitSurface (image, NULL, screen, NULL);
+//   SDL_FreeSurface (image);
+
+
+//   SDL_Flip(screen);
+
+//   SDL_Quit();
+
+  free(pngBuffer);
+//   pfile = fopen("images/sand.png", "rb");
+//   // FILE *pfile = fopen("images/hello_world_file.txt", "rb");
+//   if (!pfile) {
+//     printf("cannot open file\n");
+//     return 1;
+//   }
+  
+// //   unsigned char sig[8];
+
+
+//   fread(sig, 1, 8, pfile);
+//   if (!png_check_sig(sig, 8)) {
+//     printf("bad signature\n");
+//     return 2;   /* bad signature */
+//   } else {
+//     printf("this is a PNG file\n");
+//   }
+
+
+//   // initialize_png_reader();
+//   read_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, (png_voidp)NULL, NULL, NULL);
+
+//   if (!read_ptr) {
+//       return 3;
+//   }
+
+//   read_info_ptr = png_create_info_struct(read_ptr);
+
+//   if (!read_info_ptr) {
+//       png_destroy_read_struct(&read_ptr,
+//           (png_infopp)NULL, (png_infopp)NULL);
+//       return 4;
+//   }
+
+
+//   if (setjmp(png_jmpbuf(read_ptr)))
+//   {
+//       png_destroy_read_struct(&read_ptr, &read_info_ptr,
+//           (png_infopp)NULL);
+//       fclose(pfile);
+//       return 5;
+//   }
+
+
+
+
+
+//   fseek(pfile, 0, SEEK_END);
+
+//   pngSize = ftell(pfile);
+
+//   fseek(pfile, 0, SEEK_SET);
+
+//   printf("pngSize = %u \n", pngSize);
+
+//   bufferSize = pngSize+1000;
+
+
+
+  
+
+//   printf("bufferSize = %u \n", bufferSize);
+
+//   pngBuffer = (png_bytep)png_malloc(read_ptr, bufferSize);
+
+//   fread(pngBuffer, 1, pngSize, pfile);
+
+//   fclose (pfile);
+
+
+
+//   /////////////////////////////////////////////////// pngBuffer, pngSize, bufferSize
+
+//   for(int i=0; i<8; i++) {
+
+//     printf("signature: %X\n", pngBuffer[i]);
+
+//   }
+
+
+//   png_set_read_fn(read_ptr, pngBuffer, png_read_fn);
+
+//   png_set_read_status_fn(read_ptr, read_row_callback);
+
+//   png_read_png(read_ptr, read_info_ptr, PNG_TRANSFORM_IDENTITY, NULL);
+
+// //   info_callback(read_ptr, read_info_ptr);
+//    printf("ABOUT TO CALL PNG_GET_ROWS");
+//   row_pointers = png_get_rows(read_ptr, read_info_ptr);
+
+
+//   height = (unsigned int)png_get_image_height(read_ptr, read_info_ptr);
+//   width = (unsigned int)png_get_image_width(read_ptr, read_info_ptr);   
+//   depth = (unsigned int)png_get_bit_depth(read_ptr, read_info_ptr);
+//   channels = (unsigned int)png_get_channels(read_ptr, read_info_ptr);
+//   row_bytes = (unsigned int)png_get_rowbytes(read_ptr, read_info_ptr);
+
+//   printf("Image height is %u \n", (unsigned int)png_get_image_height(read_ptr, read_info_ptr)); 
+//   printf("Image width is %u \n", (unsigned int)png_get_image_width(read_ptr, read_info_ptr)); 
+//   printf("BitsPerPixel is %u \n", depth * channels);
+//   printf("BytesPerPixel is %u \n", (unsigned int)png_get_channels(read_ptr, read_info_ptr));
+//   printf("Image stride is %u \n", (unsigned int)png_get_rowbytes(read_ptr, read_info_ptr));
+
+
+//   printf("BEFORE encrypt/decrypt - ");
+
+//   for(int i=0; i<row_bytes; i++) {
+
+//     printf("%X", row_pointers[height/2][i]);
+
+//   }
+
+
+//   free(pngBuffer);
+
+//   png_destroy_write_struct(&read_ptr, &read_info_ptr);
+
+
+
+//////////////////////////////////////////////////////////////////
+
+//////////////////////////////////////////////////////////////////
+
+
+	// static uint32_t enckey[16] = {
+	// 	0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6,
+	// 	0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c,
+	// };
+
+	// static uint32_t text[] = {
+	// 	0x6b, 0xc1, 0xbe, 0xe2, 0x2e, 0x40, 0x9f, 0x96,
+	// 	0xe9, 0x3d, 0x7e, 0x11, 0x73, 0x93, 0x17, 0x2a,
+	// 	0xae, 0x2d, 0x8a, 0x57, 0x1e, 0x03, 0xac, 0x9c,
+	// 	0x9e, 0xb7, 0x6f, 0xac, 0x45, 0xaf, 0x8e, 0x51,
+	// 	0x30, 0xc8, 0x1c, 0x46, 0xa3, 0x5c, 0xe4, 0x11,
+	// 	0xe5, 0xfb, 0xc1, 0x19, 0x1a, 0x0a, 0x52, 0xef,
+	// 	0xf6, 0x9f, 0x24, 0x45, 0xdf, 0x4f, 0x9b, 0x17,
+	// 	0xad, 0x2b, 0x41, 0x7b, 0xe6, 0x6c, 0x37, 0x10,
+	// };
+
+	// static uint32_t kstr[sizeof(text)];
 
 
 	// static rfc3686_blk ctr_blk = {
-	// 	{0x32, 0x43, 0xf6, 0xa8},                         /* nonce   */
-	// 	{0x88, 0x5a, 0x30, 0x8d, 0x31, 0x31, 0x98, 0xa2}, /* IV      */
-	// 	{0xe0, 0x37, 0x07, 0x34}                          /* counter */
+	// 	{0xf0, 0xf1, 0xf2, 0xf3},                         /* nonce   */
+	// 	{0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9, 0xfa, 0xfb}, /* IV      */
+	// 	// {0x00, 0x00, 0x00, 0x01}                          /* counter */
+	// 	{0xfc, 0xfd, 0xfe, 0xff}                          /* counter */
 	// };
 
-	static aes_context ctx;
-	int rc;
-	uint32_t i;
-	/*  **********************************************************
-	*   First we test CTR
-	*/
 
-	printf("# CTR test\n");
-	dump("Text:", text, sizeof(text)); // PRINT PLAINTEXT BYTES TO STDOUT
-	// dump("Key:", enckey, sizeof(enckey)); // PRINT ENCRYPTION KEY BYTES TO STDOUT
+	// // static rfc3686_blk ctr_blk = {
+	// // 	{0x32, 0x43, 0xf6, 0xa8},                         /* nonce   */
+	// // 	{0x88, 0x5a, 0x30, 0x8d, 0x31, 0x31, 0x98, 0xa2}, /* IV      */
+	// // 	{0xe0, 0x37, 0x07, 0x34}                          /* counter */
+	// // };
 
-	aes128_setExpKey(&ctx, enckey);  // LOAD ENCRYPTION KEY INTO THE CONTEXT
-	aes128_setCtrBlk(&ctx, &ctr_blk); // LOAD COUNTER BLOCK INTO THE CONTEXT
+	// static aes_context ctx;
+	// int rc;
+	// uint32_t i;
+	// /*  **********************************************************
+	// *   First we test CTR
+	// */
 
-	// aes128_encrypt(&ctx, text, kstr, sizeof(text)); // ENCRYPT PLAINTEXT
-	dump("keyStr:", kstr, sizeof(kstr)); // PRINT CYPHERTEXT RESULT
-	dump("Result:", text, sizeof(text)); // PRINT CYPHERTEXT RESULT
-	rc = mem_isequal(text, aes128_TV, sizeof(aes128_TV));// COMPARE TO AES TEST VECTOR
-	printf("\t^ %s\n", (rc == 0) ? "Ok" : "INVALID" );
+	// printf("# CTR test\n");
+	// dump("Text:", text, sizeof(text)); // PRINT PLAINTEXT BYTES TO STDOUT
+	// // dump("Key:", enckey, sizeof(enckey)); // PRINT ENCRYPTION KEY BYTES TO STDOUT
 
-	/* reset the counter to decrypt */
-	ctr_blk.ctr[0] = 0xfc;
-	ctr_blk.ctr[1] = 0xfd;
-	ctr_blk.ctr[2] = 0xfe;
-	ctr_blk.ctr[3] = 0xff;
-	// ctr_blk.ctr[0] = ctr_blk.ctr[1] = ctr_blk.ctr[2] = 0;
-	// ctr_blk.ctr[3] = 1;
-	aes128_setCtrBlk(&ctx, &ctr_blk);
-	// aes128_decrypt(&ctx, text, kstr, sizeof(text));
-	dump("keyStr:", kstr, sizeof(kstr)); // PRINT CYPHERTEXT RESULT
-	dump("Text:", text, sizeof(text));
+	// aes128_setExpKey(&ctx, enckey);  // LOAD ENCRYPTION KEY INTO THE CONTEXT
+	// aes128_setCtrBlk(&ctx, &ctr_blk); // LOAD COUNTER BLOCK INTO THE CONTEXT
 
-	gen_table_mod_x(0x02);
-	gen_table_mod_x(0x03);
+	// // aes128_encrypt(&ctx, text, kstr, sizeof(text)); // ENCRYPT PLAINTEXT
+	// dump("keyStr:", kstr, sizeof(kstr)); // PRINT CYPHERTEXT RESULT
+	// dump("Result:", text, sizeof(text)); // PRINT CYPHERTEXT RESULT
+	// rc = mem_isequal(text, aes128_TV, sizeof(aes128_TV));// COMPARE TO AES TEST VECTOR
+	// printf("\t^ %s\n", (rc == 0) ? "Ok" : "INVALID" );
 
-	aes128_done(&ctx);
+	// /* reset the counter to decrypt */
+	// ctr_blk.ctr[0] = 0xfc;
+	// ctr_blk.ctr[1] = 0xfd;
+	// ctr_blk.ctr[2] = 0xfe;
+	// ctr_blk.ctr[3] = 0xff;
+	// // ctr_blk.ctr[0] = ctr_blk.ctr[1] = ctr_blk.ctr[2] = 0;
+	// // ctr_blk.ctr[3] = 1;
+	// aes128_setCtrBlk(&ctx, &ctr_blk);
+	// // aes128_decrypt(&ctx, text, kstr, sizeof(text));
+	// dump("keyStr:", kstr, sizeof(kstr)); // PRINT CYPHERTEXT RESULT
+	// dump("Text:", text, sizeof(text));
+
+	// gen_table_mod_x(0x02);
+	// gen_table_mod_x(0x03);
+
+	// aes128_done(&ctx);
 
 	return 0;
 } /* main */

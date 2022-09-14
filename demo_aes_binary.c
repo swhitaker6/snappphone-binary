@@ -27,9 +27,13 @@ struct {
 	char point[4];
 } user_ptr;
 
-uint8_t key[32];
-uint8_t nonce[8];
-uint64_t counter = 0;
+uint8_t ctxKey[32];
+uint8_t ctxNonce[8];
+uint64_t ctxCounter = 0;
+
+uint8_t svcKey[32];
+uint8_t svcNonce[8];
+uint64_t svcCounter = 0;
 
 int num_row_bytes;
 int BYTES_PER_PIXEL;
@@ -61,8 +65,12 @@ png_infop read_info_ptr;
 png_infop write_info_ptr;
 
 int pngSize;
+int chunkBytes = 8192;
+// int dataSize = 1024;
 int bufferSize;
 png_bytep pngBuffer;
+int pngOutSize;
+png_bytep pngOut;
 png_bytep processedBytes;
 int expansion_factor = 6;
 
@@ -477,12 +485,16 @@ void output_flush_fn(png_structp png_ptr) {
 
 int main() {
 
-  // hex2byte("1c9240a5eb55d38af333888604f6b5f0473917c1402b80099dca5cbc207075c0", key);
-  // hex2byte("0000000000000002", nonce);
+  hex2byte("1c9240a5eb55d38af333888604f6b5f0473917c1402b80099dca5cbc207075c0", ctxKey);
+  hex2byte("0000000000000002", ctxNonce);
 
-  
+  hex2byte("1c9240a5eb55d38af333888604f6b5f0473917c1402b80099dca5cbc207075c0", svcKey);
+  hex2byte("0000000000000002", svcNonce);
+
+  int env = 1;
   const uint8_t *key = 0;
   chacha20_ctx ctx;
+  chacha20_ctx svc;
   unsigned int len = 0;
   unsigned char *outfilebytes = NULL;
   int ret = 1;
@@ -497,10 +509,10 @@ int main() {
   int channels;
   int row_bytes;
   int do_encrypt = 1;   
+  char filename[] = "images/bananas.png";
 
 
-  FILE *pfile = fopen("images/sandscape.png", "rb");
-  // FILE *pfile = fopen("images/hello_world_file.txt", "rb");
+  FILE *pfile = fopen(filename, "rb");
   if (!pfile) {
     printf("cannot open file\n");
     return 1;
@@ -574,7 +586,8 @@ int main() {
 
   printf("pngSize = %u \n", pngSize);
 
-  bufferSize = pngSize*expansion_factor;
+  bufferSize = pngSize;  
+  // bufferSize = pngSize*expansion_factor;
 
 
 
@@ -599,9 +612,12 @@ int main() {
   }
 
 
+
   png_set_read_fn(read_ptr, pngBuffer, png_read_fn);
 
   png_set_read_status_fn(read_ptr, read_row_callback);
+
+  png_set_crc_action(read_ptr, PNG_CRC_QUIET_USE, PNG_CRC_QUIET_USE);
 
   png_read_png(read_ptr, read_info_ptr, PNG_TRANSFORM_IDENTITY, NULL);
 
@@ -609,6 +625,7 @@ int main() {
 
   row_pointers = png_get_rows(read_ptr, read_info_ptr);
 
+  free(pngBuffer);
 
   height = (unsigned int)png_get_image_height(read_ptr, read_info_ptr);
   width = (unsigned int)png_get_image_width(read_ptr, read_info_ptr);   
@@ -633,89 +650,103 @@ int main() {
   printf("BytesPerPixel is %u \n", (unsigned int)png_get_channels(write_ptr, write_info_ptr));
   printf("Image stride is %u \n", (unsigned int)png_get_rowbytes(write_ptr, write_info_ptr));
 
-  printf("BEFORE encrypt/decrypt - ");
+  printf("BEFORE encrypt - ");
 
   for(int i=0; i<row_bytes; i++) {
 
-    printf("%X", row_pointers[height/2][i]);
+    printf("%X", row_pointers[(unsigned int)floor(height/2)][i]);
 
   }
 
 
   unsigned char outbuf[row_bytes];
 
-  chacha20_setup(&ctx, key, sizeof(key), nonce);
+  chacha20_setup(&ctx, ctxKey, sizeof(ctxKey), ctxNonce);
+  chacha20_setup(&svc, svcKey, sizeof(svcKey), svcNonce);
   
-  memset(outbuf, 0, len);
-  chacha20_counter_set(&ctx, counter);
+  memset(outbuf, 0, row_bytes);
+  chacha20_counter_set(&ctx, ctxCounter);
+  chacha20_counter_set(&svc, svcCounter);
 
   for (size_t i = 0; i < height; i++)
   {
 
-    chacha20_encrypt(&ctx, row_pointers[i], outbuf, row_bytes);
+    chacha20_encrypt(&ctx, &svc, row_pointers[i], outbuf, row_bytes, env);
 
     memcpy(row_pointers[i], outbuf, row_bytes);
 
   }
 
-  printf("\n AFTER encrypte/decrypt - ");
+  printf("\n AFTER encrypt - ");
 
   for(int i=0; i<row_bytes; i++) {
 
-    printf("%X", row_pointers[height/2][i]);
+    printf("%X", row_pointers[(unsigned int)floor(height/2)][i]);
 
   }
 
-  // counter = 0;  
+
+
+  // ctxCounter = 0;  
+  // svcCounter = 0;  
   // memset(outbuf, 0, len);
-  // chacha20_counter_set(&ctx, counter);
+  // chacha20_counter_set(&ctx, ctxCounter);
+  // chacha20_counter_set(&svc, svcCounter);
 
   // for (size_t i = 0; i < height; i++)
   // {
 
-  //   chacha20_encrypt(&ctx, row_pointers[i], outbuf, row_bytes);
+  //   chacha20_encrypt(&ctx, &svc, row_pointers[i], outbuf, row_bytes, env);
 
   //   memcpy(row_pointers[i], outbuf, row_bytes);
 
   // }
 
-  // printf("\n AFTER encrypte/decrypt - ");
+  // printf("\n AFTER decrypt - ");
 
   // for(int i=0; i<row_bytes; i++) {
 
-  //   printf("%X", row_pointers[height/2][i]);
+  //   printf("%X", row_pointers[(unsigned int)floor(height/2)][i]);
 
   // }
 
-
+  printf("\n");
 
 
 
   ret = 0;
 
  err:
-  /* Clean up all the resources we allocated */
   if (ret != 0) {
     // ERR_print_errors_fp(stderr);
     return ret;
   }
 
 
-
   png_set_rows(write_ptr, write_info_ptr, row_pointers);    
+
+  png_set_crc_action(write_ptr, PNG_CRC_QUIET_USE, PNG_CRC_QUIET_USE);
 
   offset = 0;
 
-  memset(pngBuffer, 0, bufferSize); 
+
+  pngOutSize = height*row_bytes+chunkBytes;
+  // pngOutSize = height*width*channels+dataSize;
+
+  printf("pngOutSize = %u \n", pngOutSize);
+
+  pngOut = (png_bytep)png_malloc(read_ptr, pngOutSize);
+
+  // memset(pngBuffer, 0, bufferSize); 
 
   for(int i=0; i<8; i++) {
 
-    printf("buffer cleared: %X\n", pngBuffer[i]);
+    printf("buffer cleared: %X\n", pngOut[i]);
 
   }
 
-  png_set_write_fn(write_ptr, pngBuffer, png_write_fn, output_flush_fn);
-
+  png_set_write_fn(write_ptr, pngOut, png_write_fn, output_flush_fn);
+ 
   png_set_write_status_fn(png_ptr, write_row_callback);
 
   png_write_png(write_ptr, write_info_ptr, PNG_TRANSFORM_IDENTITY, NULL);
@@ -723,27 +754,29 @@ int main() {
 
   for(int i=0; i<8; i++) {
 
-    printf("buffer written: %X\n", pngBuffer[i]);
+    printf("buffer written: %X\n", pngOut[i]);
 
   }
 
 
-  pfile = fopen("images/sandscape.png", "wb");
-  // FILE *pfile = fopen("images/hello_world_file.txt", "rb");
+  pfile = fopen(filename, "wb");
   if (!pfile) {
     printf("cannot open file\n");
     return 1;
   }
 
+
   pngSize = offset;
 
-  fwrite(pngBuffer, 1, pngSize, pfile);
-  if (!png_check_sig(pngBuffer, 8)) {
+  unsigned int result = fwrite(pngOut, 1, pngOutSize, pfile);
+  if (!png_check_sig(pngOut, 8)) {
     printf("bad signature\n");
     return 2;   /* bad signature */
   } else {
     printf("this is a PNG file\n");
   }
+
+  printf("NUMBER OF BYTES WRITTEN = %u \n", result);
 
 
 
@@ -760,9 +793,12 @@ int main() {
 
   fclose (pfile);
 
-  free(pngBuffer);
+  free(pngOut);
 
-  png_destroy_write_struct(&read_ptr, &read_info_ptr);
+
+
+
+  png_destroy_read_struct(&read_ptr, &read_info_ptr, NULL);
 
   png_destroy_write_struct(&write_ptr, &write_info_ptr);
 
@@ -770,45 +806,10 @@ int main() {
 
 
 
-
-
-
-  // png_free(filebytes);
-
-
-  // row_pointers = png_get_rows(png_ptr, info_ptr);
-
-  // for( int i=0; i<height; i++) {
-
-  //   printf("row_pointers %p \n", (void*)row_pointers[i]);
-
-  // }
-
-  // for( int i=0; i<row_bytes; i++) {
-
-  //   printf("row_pointers %u \n", row_pointers[240][i]);
-
-  // }
-
-
-
-  // //do transform with row_pointers
-
-
-  // //write transformed row pointers to png_out
-
-
   SDL_Init(SDL_INIT_VIDEO);
 
 
-
-  // surface = createRGBSurfaceFromPNG((void *)filebytes, width, height, depth, row_bytes);
-  // if(!surface) {
-  //    printf("Could not create surface: %s\n", SDL_GetError());
-  //    return 0;
-  // }  
-
-  image = IMG_Load("images/sandscape.png");
+  image = IMG_Load(filename);
   
   if (!image)
   {
@@ -828,12 +829,6 @@ int main() {
   SDL_BlitSurface (image, NULL, screen, NULL);
   SDL_FreeSurface (image);
 
-
-
-  // screen = SDL_SetVideoMode(surface->w, surface->h, depth, SDL_SWSURFACE);
-
-  // SDL_BlitSurface(surface, NULL, screen, NULL);
-  // SDL_FreeSurface(surface);
 
   SDL_Flip(screen);
 
