@@ -79,12 +79,15 @@ int interlace_preserved = 1;
 png_bytep row_buf;
 png_uint_32 y;
 png_uint_32 width, height;
+int depth;
+int channels;
 int num_pass = 1, pass;
 int bit_depth, color_type;
 int total_bytes = 0;
 int file_size;
 
 int pngSize;
+int chunkBytes = 8192;
 int bufferSize;
 png_bytep pngBuffer;
 png_bytep processedBytes;
@@ -664,11 +667,27 @@ void png_read_fn(png_structp png_ptr, png_bytep data, size_t read_length) {
 
 
 
-int genTexture(int page, uint32_t *png, int sz, int w, int h, int env) {
 
-	mem_ptr = (png_bytep) png;
 
-	file_size = sz;
+
+                
+int genTexture(int page, uint32_t *pngBuffer, int bufferSize, uint32_t *pngOut, int pngOutSize, int w, int h, int env) {
+// int genTexture(int page, uint32_t *pFile, int szFile, uint32_t *pFileOut, int szFileOut, int w, int h, int env) {
+// int genTexture(int page, uint32_t *png, int sz, int w, int h, int env) {
+
+
+  hex2byte("1c9240a5eb55d38af333888604f6b5f0473917c1402b80099dca5cbc207075c0", ctxKey);
+  hex2byte("0000000000000002", ctxNonce);
+
+  hex2byte("1c9240a5eb55d38af333888604f6b5f0473917c1402b80099dca5cbc207075c0", svcKey);
+  hex2byte("0000000000000002", svcNonce);
+
+
+	mem_ptr = (png_bytep) pngBuffer;
+	// mem_ptr = (png_bytep) pFile;
+
+	file_size = bufferSize;
+	// file_size = szFile;
 	// int sz = w*h;
 	// uint32_t kstr[sz];
 
@@ -693,60 +712,52 @@ int genTexture(int page, uint32_t *png, int sz, int w, int h, int env) {
 
 	initialize_png_writer();
 
-	png_set_read_fn(read_ptr, png, png_read_fn);
+	png_set_read_fn(read_ptr, pngBuffer, png_read_fn);
 
 	png_set_read_status_fn(read_ptr, read_row_callback);
+
+   png_set_crc_action(read_ptr, PNG_CRC_QUIET_USE, PNG_CRC_QUIET_USE);
 
 	png_read_png(read_ptr, read_info_ptr, PNG_TRANSFORM_IDENTITY, NULL);
 
 	info_callback(read_ptr, read_info_ptr);
 
-	row_bytes = (unsigned int)png_get_rowbytes(read_ptr, read_info_ptr);
-
   	row_pointers = png_get_rows(read_ptr, read_info_ptr);
-	// row_pointers = png_calloc(read_ptr, h*sizeof(png_bytep));
-	// row_pointers = png_malloc(read_ptr, h*sizeof(png_bytep));
 
+   free(pngBuffer);
 
-////////////////////////////////////////////////////////////////////////////////
+   height = (unsigned int)png_get_image_height(read_ptr, read_info_ptr);
+   width = (unsigned int)png_get_image_width(read_ptr, read_info_ptr);   
+   depth = (unsigned int)png_get_bit_depth(read_ptr, read_info_ptr);
+   channels = (unsigned int)png_get_channels(read_ptr, read_info_ptr);
+   row_bytes = (unsigned int)png_get_rowbytes(read_ptr, read_info_ptr);
 
-	// imgSize = process_data(png, sz);
+   printf("Image height is %u \n", (unsigned int)png_get_image_height(read_ptr, read_info_ptr)); 
+   printf("Image width is %u \n", (unsigned int)png_get_image_width(read_ptr, read_info_ptr)); 
+   printf("BitsPerPixel is %u \n", depth * channels);
+   printf("BytesPerPixel is %u \n", (unsigned int)png_get_channels(read_ptr, read_info_ptr));
+   printf("Image stride is %u \n", (unsigned int)png_get_rowbytes(read_ptr, read_info_ptr));
 
-	// rem = imgSize % 16 ? 1 : 0;
-
-	// nBlks = (imgSize/16)+rem;
-
-	// printf("# wasm-CTR test\n");
-	
-	// dump("SANITY CHECK...PNG File BEFORE:", png, sz); // PRINT PNG FILE BYTES TO STDOUT
-
-	// dump("PNG Image BEFORE:", *row_pointers, sz); // PRINT IMAGE DATA BEFORE
-
-	// aes128_setExpKey(&ctx, ctx.enckey);  // LOAD ENCRYPTION KEY INTO THE CONTEXT
-
-	// aes128_offsetCtr(&ctx.blk.ctr[0], page, nBlks);
-
-	// aes128_encrypt_progressive(&ctx, row_pointers, num_row_bytes, w, h, env); // todo: remove temp 'kstr' argument
-	
-
-	// ctx.blk.ctr[0] = 0x00;
-	// ctx.blk.ctr[1] = 0x00;
-	// ctx.blk.ctr[2] = 0x00;
-	// ctx.blk.ctr[3] = 0x00;
-
-
-	// aes128_done(&ctx);
-
-////////////////////////////////////////////////////////////////////////////////////////
-
-////////////////////////////////////////////////////////////////////////////////////////
+   height = (unsigned int)png_get_image_height(write_ptr, write_info_ptr);
+   width = (unsigned int)png_get_image_width(write_ptr, write_info_ptr);   
+   depth = (unsigned int)png_get_bit_depth(write_ptr, write_info_ptr);
+   channels = (unsigned int)png_get_channels(write_ptr, write_info_ptr);
+   row_bytes = (unsigned int)png_get_rowbytes(write_ptr, write_info_ptr);
+   printf("Image height is %u \n", (unsigned int)png_get_image_height(write_ptr, write_info_ptr)); 
+   printf("Image width is %u \n", (unsigned int)png_get_image_width(write_ptr, write_info_ptr)); 
+   printf("BitsPerPixel is %u \n", depth * channels);
+   printf("BytesPerPixel is %u \n", (unsigned int)png_get_channels(write_ptr, write_info_ptr));
+   printf("Image stride is %u \n", (unsigned int)png_get_rowbytes(write_ptr, write_info_ptr));
   
-  
-  hex2byte("1c9240a5eb55d38af333888604f6b5f0473917c1402b80099dca5cbc207075c0", ctxKey);
-  hex2byte("0000000000000002", ctxNonce);
 
-  hex2byte("1c9240a5eb55d38af333888604f6b5f0473917c1402b80099dca5cbc207075c0", svcKey);
-  hex2byte("0000000000000002", svcNonce);
+  printf("BEFORE encrypt - ");
+
+  for(int i=0; i<row_bytes; i++) {
+
+    printf("%X", row_pointers[(unsigned int)floor(height/2)][i]);
+
+  }
+
 
   unsigned char outbuf[row_bytes];
 
@@ -767,60 +778,58 @@ int genTexture(int page, uint32_t *png, int sz, int w, int h, int env) {
   }
 
 
+  printf("\n AFTER encrypt - ");
+
+  for(int i=0; i<row_bytes; i++) {
+
+    printf("%X", row_pointers[(unsigned int)floor(height/2)][i]);
+
+  }
+
+
+
 	// chacha_encrypt_decrypt(png, sz);
 
 /////////////////////////////////////////////////////////////////////////////////////////
 
 
-    png_write_info(write_ptr, write_info_ptr);	
+  png_set_rows(write_ptr, write_info_ptr, row_pointers);    
 
-	// for(int i=0; i < h; i++) {
+  png_set_crc_action(write_ptr, PNG_CRC_QUIET_USE, PNG_CRC_QUIET_USE);
 
-	// 	png_write_row(write_ptr, row_pointers[i]);
-
-	// }
-	
-	png_write_image(write_ptr, row_pointers);
+  offset = 0;
 
 
+//   pngOutSize = height*row_bytes+chunkBytes;
+
+  printf("pngOutSize = %u \n", pngOutSize);
+
+//   pngOut = (png_bytep)png_malloc(read_ptr, pngOutSize);
 
 
-	// png_read_end(read_ptr, NULL);
+  for(int i=0; i<8; i++) {
 
-	png_write_end(write_ptr, NULL);	
+    printf("buffer cleared: %X\n", pngOut[i]);
 
-			// initialize_png_writer(read_ptr);
+  }
 
-			// png_set_rows(read_ptr, info_ptr, row_pointers);
-			// png_set_rows(write_ptr, write_info_ptr, row_pointers);
+  png_set_write_fn(write_ptr, pngOut, png_write_fn, output_flush_fn);
+ 
+  png_set_write_status_fn(png_ptr, write_row_callback);
 
-			// png_set_rows(row_pointers);
-
-			// png_write_png(write_ptr, write_info_ptr, PNG_TRANSFORM_IDENTITY, NULL);
-
-			// process_data(png, sz);
-
-	// dump("PNG File AFTER:", png, sz); // PRINT PNG FILE BYTES TO STDOUT
-
-	// dump("PNG Image AFTER:", *row_pointers, sz); // PRINT IMAGE DATA AFTER
+  png_write_png(write_ptr, write_info_ptr, PNG_TRANSFORM_IDENTITY, NULL);
 
 
-			//Destroying data structs
+  for(int i=0; i<8; i++) {
 
-			//destroying row_buf for read_ptr
-			// png_free(read_ptr, row_buf);
-			png_free(read_ptr, row_pointers);
-			// row_buf = NULL;
+    printf("buffer written: %X\n", pngOut[i]);
 
-			//destroying read_ptr, info_ptr, end_info_ptr
-	png_destroy_read_struct(&read_ptr, &info_ptr, &end_info_ptr);
+  }
 
-			//destroying write_end_info_ptr
-	png_destroy_info_struct(write_ptr, &write_end_info_ptr);
-			//destroying write_ptr, write_info_ptr
-	png_destroy_write_struct(&write_ptr, &write_info_ptr);
 
-			//Destruction complete
+  png_destroy_read_struct(&read_ptr, &read_info_ptr, NULL);
+
+  png_destroy_write_struct(&write_ptr, &write_info_ptr);
 
       return 0;
 
