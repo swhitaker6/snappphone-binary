@@ -40,8 +40,8 @@ var Module = typeof Module != 'undefined' ? Module : {};
         // web worker
         PACKAGE_PATH = encodeURIComponent(location.pathname.toString().substring(0, location.pathname.toString().lastIndexOf('/')) + '/');
       }
-      var PACKAGE_NAME = 'demo_aes_binary.data';
-      var REMOTE_PACKAGE_BASE = 'demo_aes_binary.data';
+      var PACKAGE_NAME = 'demo_test_reference.data';
+      var REMOTE_PACKAGE_BASE = 'demo_test_reference.data';
       if (typeof Module['locateFilePackage'] === 'function' && !Module['locateFile']) {
         Module['locateFile'] = Module['locateFilePackage'];
         err('warning: you defined Module.locateFilePackage, that has been renamed to Module.locateFile (using your locateFilePackage for now)');
@@ -172,10 +172,10 @@ Module['FS_createPath']("/", "images", true, true);
           var files = metadata['files'];
           for (var i = 0; i < files.length; ++i) {
             DataRequest.prototype.requests[files[i].filename].onload();
-          }          Module['removeRunDependency']('datafile_demo_aes_binary.data');
+          }          Module['removeRunDependency']('datafile_demo_test_reference.data');
 
       };
-      Module['addRunDependency']('datafile_demo_aes_binary.data');
+      Module['addRunDependency']('datafile_demo_test_reference.data');
 
       if (!Module.preloadResults) Module.preloadResults = {};
 
@@ -1173,7 +1173,7 @@ function createExportWrapper(name, fixedasm) {
 }
 
 var wasmBinaryFile;
-  wasmBinaryFile = 'demo_aes_binary.wasm';
+  wasmBinaryFile = 'demo_test_reference.wasm';
   if (!isDataURI(wasmBinaryFile)) {
     wasmBinaryFile = locateFile(wasmBinaryFile);
   }

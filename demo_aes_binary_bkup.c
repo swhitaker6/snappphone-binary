@@ -7,21 +7,19 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
+#include "demo.h"
 #include "png.h"
 #include "chacha20_simple.h"
-#include <SDL/SDL.h>
-#include <SDL/SDL_image.h>
+#include <SDL.h>
+#include <SDL_image.h>
+#include <assert.h>
+#include <emscripten.h>
+#include <emscripten/html5.h>
 
-
-// typedef struct {
-//     const png_byte* bytes;
-//     const png_size_t size;
-// } DataBytes;
-
-// typedef struct PNG {
-//     const DataBytes data;
-//     png_size_t offset;
-// } PNGDataBytes;
+SDL_Window *window = 0;
+SDL_Renderer *renderer = 0;
+SDL_Surface *image = 0;
+SDL_Texture *texture = 0;
 
 struct {
 	char point[4];
@@ -65,7 +63,7 @@ png_infop read_info_ptr;
 png_infop write_info_ptr;
 
 int pngSize;
-int chunkBytes = 1024;
+int chunkBytes = 8192;
 // int dataSize = 1024;
 int bufferSize;
 png_bytep pngBuffer;
@@ -483,6 +481,42 @@ void output_flush_fn(png_structp png_ptr) {
 
 
 
+
+
+
+int genTexture(int page, uint32_t *pngBuffer, int bufferSize, uint32_t *pngOut, int pngOutSize, int w, int h, int env) {
+
+  return 0;
+
+}
+
+
+
+uint32_t getTexture(uint32_t page, uint32_t *tex) {
+
+  return 0;
+
+}  
+
+
+
+
+static void render() {
+
+  SDL_RenderClear(renderer);
+  SDL_RenderCopy(renderer, texture, NULL, NULL);  
+  SDL_RenderPresent(renderer);  
+
+}
+
+static void mainloop() {
+
+  render();
+
+}
+
+
+
 int main() {
 
   hex2byte("1c9240a5eb55d38af333888604f6b5f0473917c1402b80099dca5cbc207075c0", ctxKey);
@@ -509,7 +543,7 @@ int main() {
   int channels;
   int row_bytes;
   int do_encrypt = 1;   
-  char filename[] = "images/penguin.png";
+  char filename[] = "images/sand.png";
 
 
   FILE *pfile = fopen(filename, "rb");
@@ -650,7 +684,7 @@ int main() {
   printf("BytesPerPixel is %u \n", (unsigned int)png_get_channels(write_ptr, write_info_ptr));
   printf("Image stride is %u \n", (unsigned int)png_get_rowbytes(write_ptr, write_info_ptr));
 
-  printf("BEFORE encrypt/decrypt - ");
+  printf("BEFORE encrypt - ");
 
   for(int i=0; i<row_bytes; i++) {
 
@@ -677,7 +711,7 @@ int main() {
 
   }
 
-  printf("\n AFTER encrypte/decrypt - ");
+  printf("\n AFTER encrypt - ");
 
   for(int i=0; i<row_bytes; i++) {
 
@@ -686,12 +720,6 @@ int main() {
   }
 
 
-    pngOutSize = height*row_bytes+chunkBytes;
-    // pngOutSize = height*width*channels+dataSize;
-
-    printf("pngOutSize = %u \n", pngOutSize);
-
-  pngOut = (png_bytep)png_malloc(read_ptr, pngOutSize);
 
   ctxCounter = 0;  
   svcCounter = 0;  
@@ -708,7 +736,7 @@ int main() {
 
   }
 
-  printf("\n AFTER encrypte/decrypt - ");
+  printf("\n AFTER decrypt - ");
 
   for(int i=0; i<row_bytes; i++) {
 
@@ -716,7 +744,7 @@ int main() {
 
   }
 
-
+  printf("\n");
 
 
 
@@ -734,6 +762,14 @@ int main() {
   png_set_crc_action(write_ptr, PNG_CRC_QUIET_USE, PNG_CRC_QUIET_USE);
 
   offset = 0;
+
+
+  pngOutSize = height*row_bytes+chunkBytes;
+  // pngOutSize = height*width*channels+dataSize;
+
+  printf("pngOutSize = %u \n", pngOutSize);
+
+  pngOut = (png_bytep)png_malloc(read_ptr, pngOutSize);
 
   // memset(pngBuffer, 0, bufferSize); 
 
@@ -808,29 +844,31 @@ int main() {
 
 
   image = IMG_Load(filename);
-  
+
+
+
+
   if (!image)
   {
      printf("IMG_Load: %s\n", IMG_GetError());
      return 0;
   }
-
+  assert(image->format->BitsPerPixel == 32);
+  assert(image->format->BytesPerPixel == 4);
+  assert(image->pitch == 4*image->w);
   printf("Image height is %u \n", image->h); 
   printf("Image width is %u \n", image->w); 
   printf("BitsPerPixel is %u \n", image->format->BitsPerPixel);
   printf("BytesPerPixel is %u \n", image->format->BytesPerPixel);
   printf("Image stride is %u \n", image->pitch);
-
-
-  screen = SDL_SetVideoMode(image->w, image->h, 32, SDL_SWSURFACE);
-
-  SDL_BlitSurface (image, NULL, screen, NULL);
+  
   SDL_FreeSurface (image);
 
+  window = SDL_CreateWindow(NULL, 0, 0, image->w, image->h, SDL_WINDOW_SHOWN);
+  renderer = SDL_CreateRenderer(window, -1, 0);
+  texture = IMG_LoadTexture(renderer, filename);
 
-  SDL_Flip(screen);
-
-  SDL_Quit();
+  emscripten_set_main_loop(mainloop, 0, 0);
 
 
 

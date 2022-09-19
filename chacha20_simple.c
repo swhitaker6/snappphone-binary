@@ -93,7 +93,7 @@ void chacha20_block(chacha20_ctx *ctx, uint32_t output[16])
 static inline void chacha20_xor(uint8_t *keystream, const uint8_t **in, uint8_t **out, size_t length, int env)
 {
   uint8_t *end_keystream = keystream + length;
-  if(env == 1 || env == 3) {
+  if(env == 0 || env == 1) {
 
     do { *(*out)++ = *(*in)++ ^ *keystream++; } while (keystream < end_keystream);
     return;
@@ -110,7 +110,7 @@ void chacha20_encrypt(chacha20_ctx *ctx, chacha20_ctx *svc, const uint8_t *in, u
   {
     uint8_t *const k = (uint8_t *)ctx->keystream;
 
-    if(env == 1 || env == 3) {  
+    if(env == 1 || env == 6) {  
 
       //First, use any buffered keystream from previous calls
       if (ctx->available)
