@@ -417,7 +417,7 @@ int initialize_png_writer()
 
 void write_row_callback(png_structp png_ptr, png_uint_32 row, int pass)
 {
-  printf("row: %u, pass: %i\n", row, pass);
+  // printf("row: %u, pass: %i\n", row, pass);
   
 }
 
@@ -460,11 +460,11 @@ void png_read_fn(png_structp png_ptr, png_bytep data, size_t read_length) {
 
       png_data = filebytes + offset;
 
-      printf("read_length: %u\n", (unsigned int)read_length);
+//      printf("read_length: %u\n", (unsigned int)read_length);
 
       offset += read_length;
 
-      printf("offset: %u\n", (unsigned int)offset);
+//      printf("offset: %u\n", (unsigned int)offset);
 
       memcpy(data, png_data, read_length);
 
@@ -486,11 +486,11 @@ void png_write_fn(png_structp png_ptr, png_bytep data, size_t read_length) {
 
       png_data = filebytes + offset;
 
-      printf("write_length: %u\n", (unsigned int)read_length);
+//      printf("write_length: %u\n", (unsigned int)read_length);
 
       offset += read_length;
 
-      printf("offset: %u\n", (unsigned int)offset);
+//      printf("offset: %u\n", (unsigned int)offset);
 
       memcpy(png_data, data, read_length);
 
@@ -524,7 +524,7 @@ int genTexture(int page, png_bytep pngBuffer, int bufferSize, png_bytep pngOut, 
 // int genTexture(int page, uint32_t *pngBuffer, int bufferSize, uint32_t *pngOut, int pngOutSize, int width, int height, int env) {
 
 
-    hex2byte("1c9240a5eb55d38af333888604f6b5f0473917c1402b80099dca5cbc207075c0", ctxKey);
+    hex2byte("x7q5v7t6aygcynttj11kuti4hmx8ehm1lut2iic6wn3udykaxbmy7tf2jzh0coa5", ctxKey);
     hex2byte("0000000000000002", ctxNonce);
 
     hex2byte("1c9240a5eb55d38af333888604f6b5f0473917c1402b80099dca5cbc207075c0", svcKey);
@@ -605,12 +605,13 @@ int genTexture(int page, png_bytep pngBuffer, int bufferSize, png_bytep pngOut, 
 
     unsigned char outbuf[row_bytes];
 
-    chacha20_setup(&ctx, ctxKey, sizeof(ctxKey), ctxNonce);
-    chacha20_setup(&svc, svcKey, sizeof(svcKey), svcNonce);
-    
+    if(env == 1 || env == 6 || env == 8)
+      chacha20_setup(&ctx, ctxKey, sizeof(ctxKey), ctxNonce);
+    else
+      chacha20_setup(&ctx, svcKey, sizeof(svcKey), svcNonce);
+  
     memset(outbuf, 0, row_bytes);
     chacha20_counter_set(&ctx, ctxCounter);
-    chacha20_counter_set(&svc, svcCounter);
 
     for (size_t i = 0; i < height; i++)
     {
@@ -631,28 +632,28 @@ int genTexture(int page, png_bytep pngBuffer, int bufferSize, png_bytep pngOut, 
 
 
 
-    // ctxCounter = 0;  
-    // svcCounter = 0;  
-    // memset(outbuf, 0, len);
-    // chacha20_counter_set(&ctx, ctxCounter);
-    // chacha20_counter_set(&svc, svcCounter);
+    ctxCounter = 0;  
+    svcCounter = 0;  
+    memset(outbuf, 0, len);
+    chacha20_counter_set(&ctx, ctxCounter);
+    chacha20_counter_set(&svc, svcCounter);
 
-    // for (size_t i = 0; i < height; i++)
-    // {
+    for (size_t i = 0; i < height; i++)
+    {
 
-    //   chacha20_encrypt(&ctx, &svc, row_pointers[i], outbuf, row_bytes, env);
+      chacha20_encrypt(&ctx, &svc, row_pointers[i], outbuf, row_bytes, env);
 
-    //   memcpy(row_pointers[i], outbuf, row_bytes);
+      memcpy(row_pointers[i], outbuf, row_bytes);
 
-    // }
+    }
 
-    // printf("\n AFTER decrypt - ");
+    printf("\n AFTER decrypt - ");
 
-    // for(int i=0; i<row_bytes; i++) {
+    for(int i=0; i<row_bytes; i++) {
 
-    //   printf("%X", row_pointers[(unsigned int)floor(height/2)][i]);
+      printf("%X", row_pointers[(unsigned int)floor(height/2)][i]);
 
-    // }
+    }
 
     printf("\n");
 
@@ -724,7 +725,7 @@ static void mainloop() {
 int main() {
 
 
-    int env = 1;
+    int env = 5;
     int height = 797;
     int width = 1200;   
     char filename[] = "images/sand.png";
@@ -850,6 +851,9 @@ int main() {
     printf("BitsPerPixel is %u \n", image->format->BitsPerPixel);
     printf("BytesPerPixel is %u \n", image->format->BytesPerPixel);
     printf("Image stride is %u \n", image->pitch);
+
+    printf("env = %u \n", env);
+
     
     SDL_FreeSurface (image);
 

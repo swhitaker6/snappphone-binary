@@ -537,11 +537,11 @@ int genTexture(int page, png_bytep pngBuffer, int bufferSize, png_bytep pngOut, 
 // int genTexture(int page, uint32_t *pngBuffer, int bufferSize, uint32_t *pngOut, int pngOutSize, int width, int height, int env) {
 
  
-    hex2byte("nijzmtp37y7dcornqo8pm363uixgdttn5v6uqi40xo3itojer7annfado12frknq", ctxKey);
-   //  hex2byte("zrswda1cp9dq1oygwjo83f46332790vvauqg2wj0o7iti3oixs81x2fck6m9biiu", ctxKey);
-   //  hex2byte("pvccrvd464zmmrxqpv3n5hfubc5kx0aum9ntlufqc0usepo9loxpss7a0d235v93", ctxKey);
-   //  hex2byte("3iy5bbp85uw2gvwly0g7v6i8488cmtl584auxlegefpgq6cug3krlax9f7b7cdu8", ctxKey);
-   //  hex2byte("x7q5v7t6aygcynttj11kuti4hmx8ehm1lut2iic6wn3udykaxbmy7tf2jzh0coa5", ctxKey);
+    // hex2byte("nijzmtp37y7dcornqo8pm363uixgdttn5v6uqi40xo3itojer7annfado12frknq", ctxKey);
+    // hex2byte("zrswda1cp9dq1oygwjo83f46332790vvauqg2wj0o7iti3oixs81x2fck6m9biiu", ctxKey);
+    // hex2byte("pvccrvd464zmmrxqpv3n5hfubc5kx0aum9ntlufqc0usepo9loxpss7a0d235v93", ctxKey);
+    // hex2byte("3iy5bbp85uw2gvwly0g7v6i8488cmtl584auxlegefpgq6cug3krlax9f7b7cdu8", ctxKey);
+    hex2byte("x7q5v7t6aygcynttj11kuti4hmx8ehm1lut2iic6wn3udykaxbmy7tf2jzh0coa5", ctxKey);
    //  hex2byte("1c9240a5eb55d38af333888604f6b5f0473917c1402b80099dca5cbc207075c0", ctxKey);
     hex2byte("0000000000000002", ctxNonce);
 
@@ -624,12 +624,14 @@ int genTexture(int page, png_bytep pngBuffer, int bufferSize, png_bytep pngOut, 
 
     unsigned char outbuf[row_bytes];
 
-    chacha20_setup(&ctx, ctxKey, sizeof(ctxKey), ctxNonce);
-    chacha20_setup(&svc, svcKey, sizeof(svcKey), svcNonce);
-    
+    if(env == 1 || env == 6 || env == 8)
+      chacha20_setup(&ctx, ctxKey, sizeof(ctxKey), ctxNonce);
+    else
+      chacha20_setup(&ctx, svcKey, sizeof(svcKey), svcNonce);
+  
     memset(outbuf, 0, row_bytes);
     chacha20_counter_set(&ctx, ctxCounter);
-    chacha20_counter_set(&svc, svcCounter);
+
 
     for (int i = 0; i < height; i++)
     {

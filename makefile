@@ -17,23 +17,22 @@ else
 endif
 
 demo.html: demo.o chacha20_simple.o libpng.a libz.a 
-# demo.html: demo.o aes128.o
+#demo_test_reference.html: demo_test_reference.o chacha20_simple.o libpng.a libz.a 
 	$(CC) $(CFLAGS) $^ -o $@
 
 chacha20_simple.o: chacha20_simple.c chacha20_simple.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-# aes128.o: aes128.c aes128.h
-# 	$(CC) $(CFLAGS) -c -o $@ $<
-
 demo.o: demo.c demo.h
+#demo_test_reference.o: demo_test_reference.c demo.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 .PHONY: clean verify
 
 clean:
 	@echo cleaning...
-	rm -f demo *.o
+	rm -f demo.o demo.js demo.html demo.wasm chacha20_simple.o 
+	#rm -f demo_test_reference.o demo_test_reference.js demo_test_reference.html demo_test_reference.wasm chacha20_simple.o
 
 verify:
 	@cbmc demo.c chacha20_simple.c -D BACK_TO_TABLES --partial-loops --bounds-check --pointer-check --div-by-zero-check --memory-leak-check --signed-overflow-check --unsigned-overflow-check --refine

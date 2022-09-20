@@ -93,13 +93,13 @@ void chacha20_block(chacha20_ctx *ctx, uint32_t output[16])
 static inline void chacha20_xor(uint8_t *keystream, const uint8_t **in, uint8_t **out, size_t length, int env)
 {
   uint8_t *end_keystream = keystream + length;
-  if(env == 0 || env == 1) {
+  if(env != 5 && env != 6) {
 
     do { *(*out)++ = *(*in)++ ^ *keystream++; } while (keystream < end_keystream);
     return;
 
   } 
-
+  
   do { *(*out)++ = *keystream++; } while (keystream < end_keystream);
 
 }
@@ -108,9 +108,8 @@ void chacha20_encrypt(chacha20_ctx *ctx, chacha20_ctx *svc, const uint8_t *in, u
 {
   if (length)
   {
-    uint8_t *const k = (uint8_t *)ctx->keystream;
 
-    if(env == 1 || env == 6) {  
+      uint8_t *const k = (uint8_t *)ctx->keystream;
 
       //First, use any buffered keystream from previous calls
       if (ctx->available)
@@ -130,31 +129,6 @@ void chacha20_encrypt(chacha20_ctx *ctx, chacha20_ctx *svc, const uint8_t *in, u
         length -= amount;
         ctx->available = sizeof(ctx->keystream) - amount;
       }
-
-    } else {
-
-      //First, use any buffered keystream from previous calls
-      if (svc->available)
-      {
-        size_t amount = MIN(length, svc->available);
-        chacha20_xor(k + (sizeof(svc->keystream)-svc->available), &in, &out, amount, env);
-        svc->available -= amount;
-        length -= amount;
-      }
-
-      //Then, handle new blocks
-      while (length)
-      {
-        size_t amount = MIN(length, sizeof(svc->keystream));
-        chacha20_block(svc, svc->keystream);
-        chacha20_xor(k, &in, &out, amount, env);
-        length -= amount;
-        svc->available = sizeof(svc->keystream) - amount;
-      }
-
-
-    }
-
 
 
   }
