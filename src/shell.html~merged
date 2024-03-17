@@ -1241,13 +1241,10 @@
             }
           };
         })(),
-<<<<<<< HEAD
-=======
         printErr: function(text) {
           if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
           console.error(text);
         },
->>>>>>> 3f81f0385ccb07f689cb23835907b3cf295afa8b
         canvas: (function() {
           var canvas = document.getElementById('canvas');
 
@@ -1292,26 +1289,18 @@
         Module.setStatus('Exception thrown, see JavaScript console');
         spinnerElement.style.display = 'none';
         Module.setStatus = function(text) {
-<<<<<<< HEAD
-          if (text) console.error('[post-exception status] ' + text);
-        };
-      };
-    </script>
-    <script async type="text/javascript" src="snapp_binary_test_sdl.js"></script>
-  </body>
-</html>
-
-
-=======
           if (text) Module.printErr('[post-exception status] ' + text);
         };
       };
     </script>
-<<<<<<< HEAD:src/shell.html
+<<<<<<< HEAD
     {{{ SCRIPT }}}
 =======
-    <script async type="text/javascript" src="snapp_binary_test_sdl.js"></script>
->>>>>>> 3f81f0385ccb07f689cb23835907b3cf295afa8b:snapp_binary_test_sdl.html
+<<<<<<< HEAD:scratch/demo.html
+    <script async type="text/javascript" src="demo.js"></script>
+=======
+    {{{ SCRIPT }}}
+>>>>>>> 3f81f0385ccb07f689cb23835907b3cf295afa8b:src/shell.html
+>>>>>>> 3f81f0385ccb07f689cb23835907b3cf295afa8b
   </body>
 </html>
->>>>>>> 3f81f0385ccb07f689cb23835907b3cf295afa8b
