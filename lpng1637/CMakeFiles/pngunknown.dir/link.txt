@@ -1,0 +1,1 @@
+/usr/bin/cc -rdynamic CMakeFiles/pngunknown.dir/contrib/libtests/pngunknown.c.o -o pngunknown  -Wl,-rpath,/home/swhitaker6/project/emscripten/1.38.30/lpng1637 libpng16.so.16.37.0 -lz -lm 

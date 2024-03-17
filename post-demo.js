@@ -581,6 +581,70 @@ var freeGenTexture = function () {
 
 
 
+var doBinaryRunTest = function () {
+
+
+
+    console.log("inside doBinaryRunTest() function");
+
+
+        pngFileArrayBuf = img; //event.target.result;
+
+  
+        var pngFileTypedArray = new Uint8Array(pngFileArrayBuf);
+    
+        console.log("PNG File Typed Array LENGTH:");
+        console.log(pngFileTypedArray.length);
+
+        var w = pngFileTypedArray.length;
+        var h = 1;
+    
+        console.log("PNG File Typed Array BYTES_PER_ELEMENT:");
+        console.log(pngFileTypedArray.BYTES_PER_ELEMENT);
+    
+        console.log("PNG File Typed Array DATA:");
+        console.log(pngFileTypedArray);
+    
+
+        szFile = pngFileTypedArray.length*pngFileTypedArray.BYTES_PER_ELEMENT;
+
+  
+        console.log("Max module HEAP memory size ="+Module.HEAP8.length);
+  
+        console.log("about to call Module._malloc(...)...");
+
+        pFile = Module._malloc(szFile);
+
+        console.log("Module._malloc returned pointer -> pFile = ", pFile);
+
+        console.log("about to call Module.HEAP8.set(...)...")
+        Module.HEAP8.set(pngFileTypedArray, pFile);
+
+  
+        var fileBuffer = new ArrayBuffer(szFile);
+
+        console.log("about to call Module.getValue(...) repeatedly to retreive data set by previous call")
+        var pngFileInWasmModuleMemory = new Uint8Array(fileBuffer);
+        for(i=0; i < szFile; i++) {
+    
+          pngFileInWasmModuleMemory[i] = Module.getValue(pFile+i, 'i8'); 
+    
+        }
+        console.log("Data in WASM module memory retreived by Module.getValue(...) calls");
+        console.log(pngFileInWasmModuleMemory);
+
+        console.log("about to call Module._free(...) on pFile pointer");
+        Module._free(pFile);
+        pFile = 0;
+        console.log("finished call to Module._free(...) on pFile -> pointer = ", pFile);
+
+
+
+}
+
+
+// doBinaryRunTest();
+
 // var genTexture = Module.cwrap('genTexture', 'number', [ 'nunber', 'number' ], [ 'page', 'buf' ]);
     
 

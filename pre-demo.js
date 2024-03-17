@@ -35,13 +35,13 @@
  * continue to make function call..
  *
  */
-//Module['noExitRuntime'] = true;
+Module['noExitRuntime'] = true;
 
 /*
  * If set to true, main() will not automatically be called. 
  *
  */
-Module['noInitialRun'] = false;
+Module['noInitialRun'] = true;
 
 //var genTexture = Module.cwrap('_genTexture', 'number', [ 'nunber', 'number' ], [ 'page', 'buf' ]);
 

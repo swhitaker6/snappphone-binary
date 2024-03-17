@@ -1,8 +1,24 @@
-*/
-zlib-1.2.12/
-libpng/
-libpng-1.6.37/
-libpng_c/
-openssl-3.0.5/
-SDL/
-SDL_image/
+# vim/emacs temporary/backup files
+*~
+*.swp
+
+*.diff
+*.pyc
+*.bc
+
+# Ignore only the root node_modules, but not any further down the path
+/node_modules/
+
+# Ignore generated files
+
+tests/fake/
+tests/freetype/objs/*.o
+tests/freetype/objs/*.lo
+
+third_party/lzma.js/lzip/*.o
+third_party/lzma.js/lzma-native
+third_party/lzma.js/lzma-native.exe
+
+tools/optimizer_build/
+
+.DS_Store

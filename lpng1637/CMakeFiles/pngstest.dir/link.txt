@@ -1,0 +1,1 @@
+/usr/bin/cc -rdynamic CMakeFiles/pngstest.dir/contrib/libtests/pngstest.c.o -o pngstest  -Wl,-rpath,/home/swhitaker6/project/emscripten/1.38.30/lpng1637 libpng16.so.16.37.0 -lz -lm 
