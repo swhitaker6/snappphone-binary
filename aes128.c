@@ -1127,7 +1127,7 @@ uint32_t *aes128_encrypt_progressive_data(aes_context *ctx, char **row_data, int
 uint32_t *aes128_encrypt_progressive(aes_context *ctx, png_bytep *row_pointers, int row_bytes, int w, int h, bool env)
 {
 	png_bytep row;
-	int BYTES_PER_PIXEL = 3; //4;
+	// int BYTES_PER_PIXEL = 3; //4;
 	// int row_bytes = w * BYTES_PER_PIXEL;
 	int sz = w*h;
 	int  i, k, l;
